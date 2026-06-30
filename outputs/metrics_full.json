@@ -1,0 +1,17 @@
+{
+  "method": "full",
+  "total_params": 76961152,
+  "trainable_params": 76961152,
+  "trainable_pct": 100.0,
+  "train_time_sec": 17.15,
+  "peak_ram_mb": 1075.23,
+  "peak_gpu_mb": 0.0,
+  "train_loss_history": [
+    0.2867
+  ],
+  "eval_loss_history": [],
+  "final_accuracy": 0.94,
+  "checkpoint_size_mb": 295.92,
+  "estimated_energy_kwh": 0.000143,
+  "estimated_co2_g": 0.0429
+}

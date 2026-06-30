@@ -1,0 +1,23 @@
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Large Model Checkpoints & Logs
+outputs/lora/
+outputs/full/
+logs/
+
+# IDE & System files
+.claude/
+.system_generated/
+.DS_Store
+.vscode/
+.idea/

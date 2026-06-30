@@ -1,0 +1,17 @@
+{
+  "method": "lora",
+  "total_params": 77305216,
+  "trainable_params": 344064,
+  "trainable_pct": 0.4451,
+  "train_time_sec": 32.21,
+  "peak_ram_mb": 754.5,
+  "peak_gpu_mb": 0.0,
+  "train_loss_history": [
+    0.327
+  ],
+  "eval_loss_history": [],
+  "final_accuracy": 0.92,
+  "checkpoint_size_mb": 3.65,
+  "estimated_energy_kwh": 0.000268,
+  "estimated_co2_g": 0.0804
+}
