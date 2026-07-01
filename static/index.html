@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoRA vs Full Fine-Tuning: Comparativ Interactiv</title>
+    <title>LoRA vs Full Fine-Tuning: Interactive Comparison</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- FontAwesome pentru Iconițe -->
+    <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- CSS Personalizat -->
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,12 +23,12 @@
                 <i class="fa-solid fa-microchip-ai logo-icon"></i>
                 <div class="header-titles">
                     <h1>LoRA vs Full Fine-Tuning</h1>
-                    <p>Studiu Comparativ de Eficiență Energetică și Performanță în Antrenarea LLM</p>
+                    <p>Comparative study of energy efficiency and model performance for LLM fine-tuning.</p>
                 </div>
             </div>
             <div class="system-status" id="system-status">
                 <span class="status-dot green"></span>
-                <span class="status-text">Sistem Pregătit</span>
+                <span class="status-text">System Ready</span>
             </div>
         </header>
 
@@ -38,11 +38,11 @@
             <nav class="app-nav">
                 <button class="nav-btn active" data-tab="training">
                     <i class="fa-solid fa-sliders"></i>
-                    <span>Antrenament</span>
+                    <span>Training</span>
                 </button>
                 <button class="nav-btn" data-tab="analytics">
                     <i class="fa-solid fa-chart-line"></i>
-                    <span>Analiză & Green AI</span>
+                    <span>Analytics & Green AI</span>
                 </button>
                 <button class="nav-btn" data-tab="playground">
                     <i class="fa-solid fa-gamepad"></i>
@@ -60,31 +60,31 @@
                         <div class="card glass-card">
                             <div class="card-header">
                                 <i class="fa-solid fa-gear text-blue"></i>
-                                <h2>Configurare Hiperparametri</h2>
+                                <h2>Hyperparameter Configuration</h2>
                             </div>
                             <form id="config-form" class="config-form">
                                 <div class="form-group">
                                     <label for="train_samples">
-                                        Eșantioane Antrenament
-                                        <span class="tooltip" title="Numărul de exemple din SST-2 folosite pentru antrenament. Valori mai mari sporesc acuratețea dar măresc timpul de calcul."><i class="fa-solid fa-circle-info"></i></span>
+                                        Training Samples
+                                        <span class="tooltip" title="The number of examples used for training. Larger values can improve performance but increase compute time."><i class="fa-solid fa-circle-info"></i></span>
                                     </label>
                                     <input type="number" id="train_samples" name="train_samples" min="10" max="10000" step="50">
                                 </div>
                                 <div class="form-group">
-                                    <label for="epochs">Număr Epoci</label>
+                                    <label for="epochs">Epochs</label>
                                     <input type="number" id="epochs" name="epochs" min="1" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label for="batch_size">Dimensiune Batch (Mărime Lot)</label>
+                                    <label for="batch_size">Batch Size</label>
                                     <input type="number" id="batch_size" name="batch_size" min="1" max="64">
                                 </div>
-                                <div class="form-group-divider">Setări LoRA</div>
+                                <div class="form-group-divider">LoRA Settings</div>
                                 <div class="grid-2col-small">
                                     <div class="form-group">
                                         <label for="lora_r">LoRA Rank (r)</label>
                                         <select id="lora_r" name="lora_r">
                                             <option value="4">4</option>
-                                            <option value="8">8 (Recomandat)</option>
+                                            <option value="8">8 (Recommended)</option>
                                             <option value="16">16</option>
                                             <option value="32">32</option>
                                         </select>
@@ -93,22 +93,22 @@
                                         <label for="lora_alpha">LoRA Alpha</label>
                                         <select id="lora_alpha" name="lora_alpha">
                                             <option value="8">8</option>
-                                            <option value="16">16 (Recomandat)</option>
+                                            <option value="16">16 (Recommended)</option>
                                             <option value="32">32</option>
                                         </select>
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <label for="learning_rate_lora">Rată de Învățare LoRA</label>
+                                    <label for="learning_rate_lora">LoRA Learning Rate</label>
                                     <input type="number" id="learning_rate_lora" name="learning_rate_lora" step="0.0001" min="0.00001">
                                 </div>
-                                <div class="form-group-divider">Setări Full Fine-Tuning</div>
+                                <div class="form-group-divider">Full Fine-Tuning Settings</div>
                                 <div class="form-group">
-                                    <label for="learning_rate_full">Rată de Învățare Full FT</label>
+                                    <label for="learning_rate_full">Full FT Learning Rate</label>
                                     <input type="number" id="learning_rate_full" name="learning_rate_full" step="0.000005" min="0.000001">
                                 </div>
                                 <button type="submit" class="btn btn-primary" id="save-config-btn">
-                                    <i class="fa-solid fa-floppy-disk"></i> Salvează Configurația
+                                    <i class="fa-solid fa-floppy-disk"></i> Save Configuration
                                 </button>
                             </form>
                         </div>
@@ -117,30 +117,30 @@
                         <div class="card glass-card">
                             <div class="card-header">
                                 <i class="fa-solid fa-circle-play text-red"></i>
-                                <h2>Control Antrenament</h2>
+                                <h2>Training Control</h2>
                             </div>
                             
                             <div class="training-buttons">
                                 <button class="btn btn-train-lora" id="start-lora-btn">
-                                    <i class="fa-solid fa-bolt"></i> Antrenează LoRA
+                                    <i class="fa-solid fa-bolt"></i> Train LoRA
                                 </button>
                                 <button class="btn btn-train-full" id="start-full-btn">
-                                    <i class="fa-solid fa-gauge-high"></i> Antrenează Full FT
+                                    <i class="fa-solid fa-gauge-high"></i> Train Full FT
                                 </button>
                             </div>
 
                             <!-- Live Progress Section -->
                             <div class="live-progress-container hidden" id="live-progress-sec">
                                 <div class="progress-details">
-                                    <span class="progress-title" id="progress-title">Antrenament LoRA în curs...</span>
+                                    <span class="progress-title" id="progress-title">LoRA training in progress...</span>
                                     <span class="progress-val" id="progress-val">0%</span>
                                 </div>
                                 <div class="progress-bar-bg">
                                     <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%"></div>
                                 </div>
                                 <div class="progress-stats">
-                                    <div><i class="fa-solid fa-clock"></i> Epocă: <span id="stat-epoch">-</span></div>
-                                    <div><i class="fa-solid fa-layer-group"></i> Pas: <span id="stat-step">-</span>/<span id="stat-max-step">-</span></div>
+                                    <div><i class="fa-solid fa-clock"></i> Epoch: <span id="stat-epoch">-</span></div>
+                                    <div><i class="fa-solid fa-layer-group"></i> Step: <span id="stat-step">-</span>/<span id="stat-max-step">-</span></div>
                                     <div><i class="fa-solid fa-chart-area"></i> Loss: <span id="stat-loss">-</span></div>
                                 </div>
                             </div>
@@ -152,7 +152,7 @@
                                     <button class="console-clear" id="clear-console-btn"><i class="fa-solid fa-trash-can"></i></button>
                                 </div>
                                 <div class="console-body" id="console-output">
-                                    <div class="console-line system">[Sistem] Interfață inițializată. Modelele sunt pregătite.</div>
+                                    <div class="console-line system">[System] Interface initialized. Models are ready.</div>
                                 </div>
                             </div>
                         </div>
@@ -162,7 +162,7 @@
                     <div class="card glass-card margin-top">
                         <div class="card-header">
                             <i class="fa-solid fa-chart-line text-purple"></i>
-                            <h2>Evoluție Loss în Timp Real</h2>
+                            <h2>Real-Time Loss Progress</h2>
                         </div>
                         <div class="chart-container-large">
                             <canvas id="liveLossChart"></canvas>
@@ -174,26 +174,26 @@
                 <section class="tab-content" id="tab-analytics">
                     <div class="metrics-missing-alert" id="metrics-alert">
                         <i class="fa-solid fa-triangle-exclamation"></i>
-                        <p>Nu există suficiente date pentru comparație. Rulează ambele antrenamente (LoRA și Full FT) din primul tab pentru a genera raportul complet.</p>
+                        <p>Not enough data is available for comparison. Run both LoRA and Full FT training from the first tab to generate the complete report.</p>
                     </div>
 
                     <div class="analytics-layout" id="analytics-content">
                         <!-- Key Performance Indicators (KPIs) -->
                         <div class="kpi-grid">
                             <div class="kpi-card glass-card lora">
-                                <span class="kpi-method">LoRA (Eficiență)</span>
+                                <span class="kpi-method">LoRA (Efficiency)</span>
                                 <div class="kpi-value" id="kpi-lora-acc">-</div>
-                                <span class="kpi-label">Acuratețe Test</span>
+                                <span class="kpi-label">Test Accuracy</span>
                             </div>
                             <div class="kpi-card glass-card full">
                                 <span class="kpi-method">Full Fine-Tuning</span>
                                 <div class="kpi-value" id="kpi-full-acc">-</div>
-                                <span class="kpi-label">Acuratețe Test</span>
+                                <span class="kpi-label">Test Accuracy</span>
                             </div>
                             <div class="kpi-card glass-card green-kpi">
                                 <span class="kpi-method">Green AI Impact</span>
                                 <div class="kpi-value text-green" id="kpi-energy-savings">-</div>
-                                <span class="kpi-label">Economie de Energie</span>
+                                <span class="kpi-label">Energy Savings</span>
                             </div>
                         </div>
 
@@ -203,18 +203,18 @@
                             <div class="card glass-card">
                                 <div class="card-header">
                                     <i class="fa-solid fa-chart-simple text-blue"></i>
-                                    <h2>Timp de Calcul & Memorie Peak</h2>
+                                    <h2>Compute Time & Peak Memory</h2>
                                 </div>
                                 <div class="chart-container">
                                     <canvas id="timeMemChart"></canvas>
                                 </div>
                             </div>
                             
-                            <!-- Parametri & Checkpoint -->
+                            <!-- Parameters & Checkpoint -->
                             <div class="card glass-card">
                                 <div class="card-header">
                                     <i class="fa-solid fa-database text-red"></i>
-                                    <h2>Parametri Antrenați & Dimensiune Model</h2>
+                                    <h2>Trained Parameters & Model Size</h2>
                                 </div>
                                 <div class="chart-container">
                                     <canvas id="paramsSizeChart"></canvas>
@@ -226,42 +226,42 @@
                         <div class="card glass-card green-section margin-top">
                             <div class="card-header">
                                 <i class="fa-solid fa-leaf text-green"></i>
-                                <h2>Green AI: Amprentă de Carbon și Consum Energetic</h2>
+                                <h2>Green AI: Carbon Footprint and Energy Usage</h2>
                             </div>
                             <div class="green-details-grid">
                                 <div class="green-stats">
-                                    <h3>Consum Energetic Estimator</h3>
+                                    <h3>Energy Consumption Estimator</h3>
                                     <div class="green-stat-row">
-                                        <span>Consum Energie LoRA:</span>
+                                        <span>LoRA Energy Consumption:</span>
                                         <strong id="green-energy-lora">- kWh</strong>
                                     </div>
                                     <div class="green-stat-row">
-                                        <span>Consum Energie Full FT:</span>
+                                        <span>Full FT Energy Consumption:</span>
                                         <strong id="green-energy-full">- kWh</strong>
                                     </div>
                                     <div class="green-stat-row highlight">
-                                        <span>Eficiență LoRA:</span>
+                                        <span>LoRA Efficiency:</span>
                                         <strong class="text-green" id="green-efficiency-ratio">-</strong>
                                     </div>
                                 </div>
                                 <div class="green-stats">
-                                    <h3>Amprenta de Carbon (Emisii CO2)</h3>
+                                    <h3>Carbon Footprint (CO2 Emissions)</h3>
                                     <div class="green-stat-row">
-                                        <span>Emisii LoRA:</span>
+                                        <span>LoRA Emissions:</span>
                                         <strong id="green-co2-lora">- g CO2</strong>
                                     </div>
                                     <div class="green-stat-row">
-                                        <span>Emisii Full FT:</span>
+                                        <span>Full FT Emissions:</span>
                                         <strong id="green-co2-full">- g CO2</strong>
                                     </div>
                                     <div class="green-stat-row highlight">
-                                        <span>Emisii Prevenite:</span>
+                                        <span>Emissions Avoided:</span>
                                         <strong class="text-green" id="green-co2-saved">- g CO2</strong>
                                     </div>
                                 </div>
                                 <div class="green-explanation">
-                                    <h3>De ce contează?</h3>
-                                    <p>Full Fine-Tuning antrenează toate cele 80 de milioane de conexiuni ale modelului, forțând sistemul să ruleze la consum maxim de TDP pentru o perioadă mai lungă. LoRA (Low-Rank Adaptation) îngheață 99% din model și antrenează doar o matrice mică de adaptare. Acest lucru nu doar că reduce masiv timpii de calcul, dar scade dramatic temperatura hardware-ului și consumul energetic.</p>
+                                    <h3>Why it matters</h3>
+                                    <p>Full Fine-Tuning updates all model parameters, which increases compute and energy usage. LoRA (Low-Rank Adaptation) freezes most of the model and trains a much smaller adapter, greatly reducing training time and energy consumption.</p>
                                 </div>
                             </div>
                         </div>
@@ -273,14 +273,14 @@
                     <div class="card glass-card">
                         <div class="card-header">
                             <i class="fa-solid fa-pen-fancy text-blue"></i>
-                            <h2>Playground Comparativ Inferență</h2>
+                            <h2>Comparative Inference Playground</h2>
                         </div>
-                        <p class="playground-intro">Introdu o frază în engleză pentru a analiza sentimentul (pozitiv sau negativ). Vom trimite textul simultan către modelul de bază, modelul antrenat cu LoRA și modelul Full Fine-Tuned pentru a vedea cum s-au schimbat predicțiile lor.</p>
+                        <p class="playground-intro">Enter a sentence to run comparative inference on the base, LoRA, and Full FT models. The predictions will show how each model behaves on the same input.</p>
                         
                         <div class="playground-input-sec">
-                            <textarea id="playground-text" placeholder="Exemplu: The movie was absolutely fantastic! The acting was superb and the plot kept me on the edge of my seat..."></textarea>
+                            <textarea id="playground-text" placeholder="Example: The movie was absolutely fantastic! The acting was superb and the plot kept me on the edge of my seat..."></textarea>
                             <button class="btn btn-primary" id="predict-btn">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i> Analizează Sentimentul
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Analyze Emotion
                             </button>
                         </div>
                     </div>
@@ -290,19 +290,19 @@
                         <!-- Base Model -->
                         <div class="model-result-card glass-card" id="card-model-base">
                             <div class="model-card-header">
-                                <span class="model-badge badge-gray">Netrăit (Zero-Shot)</span>
+                                <span class="model-badge badge-gray">Zero-Shot</span>
                                 <h3>Base Model</h3>
                                 <p class="model-sub">google/flan-t5-small</p>
                             </div>
                             <div class="model-card-body">
-                                <div class="result-placeholder" id="res-base-placeholder">Așteptare input...</div>
+                                <div class="result-placeholder" id="res-base-placeholder">Waiting for input...</div>
                                 <div class="result-content hidden" id="res-base-content">
                                     <div class="sentiment-icon-container" id="res-base-icon">
                                         <i class="fa-solid fa-face-smile text-green"></i>
                                     </div>
                                     <div class="sentiment-label" id="res-base-label">POSITIVE</div>
                                     <div class="confidence-container">
-                                        <span>Încredere:</span>
+                                        <span>Confidence:</span>
                                         <div class="confidence-bar-bg">
                                             <div class="confidence-bar-fill bg-gray" id="res-base-bar" style="width: 50%"></div>
                                         </div>
@@ -320,14 +320,14 @@
                                 <p class="model-sub">flan-t5-small + Adaptor</p>
                             </div>
                             <div class="model-card-body">
-                                <div class="result-placeholder" id="res-lora-placeholder">Așteptare input...</div>
+                                <div class="result-placeholder" id="res-lora-placeholder">Waiting for input...</div>
                                 <div class="result-content hidden" id="res-lora-content">
                                     <div class="sentiment-icon-container" id="res-lora-icon">
                                         <i class="fa-solid fa-face-smile text-green"></i>
                                     </div>
                                     <div class="sentiment-label" id="res-lora-label">POSITIVE</div>
                                     <div class="confidence-container">
-                                        <span>Încredere:</span>
+                                        <span>Confidence:</span>
                                         <div class="confidence-bar-bg">
                                             <div class="confidence-bar-fill bg-blue" id="res-lora-bar" style="width: 50%"></div>
                                         </div>
@@ -336,7 +336,7 @@
                                 </div>
                                 <div class="model-not-trained-overlay" id="overlay-lora">
                                     <i class="fa-solid fa-lock"></i>
-                                    <p>Modelul LoRA nu a fost încă antrenat.</p>
+                                    <p>The LoRA model has not been trained yet.</p>
                                 </div>
                             </div>
                         </div>
@@ -349,14 +349,14 @@
                                 <p class="model-sub">flan-t5-small (Full)</p>
                             </div>
                             <div class="model-card-body">
-                                <div class="result-placeholder" id="res-full-placeholder">Așteptare input...</div>
+                                <div class="result-placeholder" id="res-full-placeholder">Waiting for input...</div>
                                 <div class="result-content hidden" id="res-full-content">
                                     <div class="sentiment-icon-container" id="res-full-icon">
                                         <i class="fa-solid fa-face-smile text-green"></i>
                                     </div>
                                     <div class="sentiment-label" id="res-full-label">POSITIVE</div>
                                     <div class="confidence-container">
-                                        <span>Încredere:</span>
+                                        <span>Confidence:</span>
                                         <div class="confidence-bar-bg">
                                             <div class="confidence-bar-fill bg-red" id="res-full-bar" style="width: 50%"></div>
                                         </div>
@@ -365,10 +365,22 @@
                                 </div>
                                 <div class="model-not-trained-overlay" id="overlay-full">
                                     <i class="fa-solid fa-lock"></i>
-                                    <p>Modelul Full FT nu a fost încă antrenat.</p>
+                                    <p>The Full FT model has not been trained yet.</p>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Full Emotion Score Chart -->
+                    <div class="card glass-card margin-top">
+                        <div class="card-header">
+                            <i class="fa-solid fa-chart-bar text-yellow"></i>
+                            <h2>Emotion Probability Breakdown</h2>
+                        </div>
+                        <div class="chart-container-large emotion-chart-container">
+                            <canvas id="emotionScoreChart"></canvas>
+                        </div>
+                        <div class="emotion-chart-legend" id="emotion-chart-legend"></div>
                     </div>
                 </section>
                 

@@ -1,4 +1,4 @@
-"""Urmărire metrici: timp, memorie, parametri, acuratețe."""
+"""Track metrics: time, memory, parameters, accuracy."""
 
 import time
 import os
@@ -25,6 +25,9 @@ class ExperimentMetrics:
     train_loss_history: list = field(default_factory=list)
     eval_loss_history: list = field(default_factory=list)
     final_accuracy: float = 0.0
+    final_macro_f1: float = 0.0
+    per_class: dict = field(default_factory=dict)
+    confusion_matrix: dict = field(default_factory=dict)
     # Dimensiune checkpoint
     checkpoint_size_mb: float = 0.0
     # Green AI
