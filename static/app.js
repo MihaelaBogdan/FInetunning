@@ -33,7 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
     checkTrainingStatus();
     loadAnalytics();
     setupSSE();
-    
+    loadDatasetStats();
+    loadDuplicateStats();
+
     // Configuration form
     document.getElementById('config-form').addEventListener('submit', saveConfig);
     
@@ -630,5 +632,419 @@ async function runPlaygroundInference() {
         if (emotionScoreChart) {
             emotionScoreChart.resize();
         }
+    }
+}
+
+// ─── DATASET EXPLORER ────────────────────────────────────────────────────────
+
+const LABEL_COLORS = [
+    '#00bcff', '#ff455b', '#10b981', '#f59e0b', '#a855f7', '#f97316'
+];
+
+let dsLabelChart = null;
+let dsLenChart = null;
+
+async function loadDatasetStats() {
+    try {
+        const res = await fetch(`${API_BASE}/api/dataset-stats`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderDatasetStats(data);
+    } catch (e) {
+        console.warn('Dataset stats unavailable:', e);
+    }
+}
+
+function renderDatasetStats(data) {
+    // Header info
+    document.getElementById('ds-name').textContent = data.dataset;
+    document.getElementById('ds-task').textContent = data.task;
+
+    // Split stat cards
+    const splitContainer = document.getElementById('ds-split-cards');
+    splitContainer.innerHTML = '';
+    const splitOrder = ['train', 'validation', 'test'];
+    const splitIcons = { train: '🟦', validation: '🟨', test: '🟩' };
+    splitOrder.forEach(name => {
+        const s = data.splits[name];
+        if (!s) return;
+        const card = document.createElement('div');
+        card.className = 'ds-split-stat';
+        card.innerHTML = `
+            <div class="split-name">${splitIcons[name] || ''} ${name}</div>
+            <div class="split-total">${s.total.toLocaleString()}</div>
+            <div class="split-meta">avg ${s.avg_words} words &nbsp;·&nbsp; ${s.min_words}–${s.max_words} range</div>
+        `;
+        splitContainer.appendChild(card);
+    });
+
+    // Label distribution doughnut (train)
+    const trainSplit = data.splits.train;
+    if (trainSplit) {
+        const labelNames = data.label_names;
+        const counts = labelNames.map(l => trainSplit.label_counts[l] || 0);
+
+        const ctxLabel = document.getElementById('ds-label-chart').getContext('2d');
+        if (dsLabelChart) dsLabelChart.destroy();
+        dsLabelChart = new Chart(ctxLabel, {
+            type: 'doughnut',
+            data: {
+                labels: labelNames,
+                datasets: [{
+                    data: counts,
+                    backgroundColor: LABEL_COLORS.slice(0, labelNames.length),
+                    borderColor: 'rgba(0,0,0,0.3)',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#9ca3af', font: { size: 12 }, padding: 16 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                                return ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Text length bar chart (avg per label)
+        const ctxLen = document.getElementById('ds-len-chart').getContext('2d');
+        if (dsLenChart) dsLenChart.destroy();
+        dsLenChart = new Chart(ctxLen, {
+            type: 'bar',
+            data: {
+                labels: labelNames,
+                datasets: [{
+                    label: 'Count',
+                    data: counts,
+                    backgroundColor: LABEL_COLORS.slice(0, labelNames.length).map(c => c + 'bb'),
+                    borderColor: LABEL_COLORS.slice(0, labelNames.length),
+                    borderWidth: 1.5,
+                    borderRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                },
+                scales: {
+                    x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                }
+            }
+        });
+    }
+
+    // Split comparison grouped bar chart (Train vs Val vs Test)
+    const splitCanvas = document.getElementById('ds-split-compare-chart');
+    if (splitCanvas) {
+        const labelNames2 = data.label_names;
+        const splitColors = { train: '#00bcff', validation: '#f59e0b', test: '#10b981' };
+        const splitOrder = ['train', 'validation', 'test'];
+        const splitLabels = { train: 'Train', validation: 'Validation', test: 'Test' };
+
+        const datasets = splitOrder
+            .filter(s => data.splits[s])
+            .map(s => {
+                const total = data.splits[s].total;
+                const counts = labelNames2.map(l => {
+                    const raw = data.splits[s].label_counts[l] || 0;
+                    return total > 0 ? Math.round((raw / total) * 100 * 10) / 10 : 0;
+                });
+                return {
+                    label: splitLabels[s],
+                    data: counts,
+                    backgroundColor: splitColors[s] + '99',
+                    borderColor: splitColors[s],
+                    borderWidth: 1.5,
+                    borderRadius: 4,
+                };
+            });
+
+        if (window._dsSplitChart) window._dsSplitChart.destroy();
+        window._dsSplitChart = new Chart(splitCanvas.getContext('2d'), {
+            type: 'bar',
+            data: { labels: labelNames2, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: '#9ca3af', font: { size: 12 }, padding: 16 }
+                    },
+                    tooltip: {
+                        callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}%` }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: {
+                        ticks: { color: '#9ca3af', callback: v => v + '%' },
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        title: { display: true, text: '% din split', color: '#9ca3af', font: { size: 11 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // Sample cards
+    const samplesEl = document.getElementById('ds-samples');
+    const allSamples = (data.splits.train?.samples || []);
+    if (allSamples.length === 0) {
+        samplesEl.innerHTML = '<p style="color:var(--text-muted)">No samples available.</p>';
+        return;
+    }
+    samplesEl.innerHTML = '';
+    const labelNames = data.label_names;
+    allSamples.forEach((s, i) => {
+        const color = LABEL_COLORS[labelNames.indexOf(s.label)] || '#9ca3af';
+        const card = document.createElement('div');
+        card.className = 'ds-sample-card';
+        card.innerHTML = `
+            <span class="ds-sample-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">
+                ${s.label}
+            </span>
+            <p class="ds-sample-text">"${s.text}${s.text.length >= 220 ? '…' : ''}"</p>
+        `;
+        samplesEl.appendChild(card);
+    });
+}
+
+// ─── TRAINING ESTIMATE ───────────────────────────────────────────────────────
+// sec/step benchmark (MPS flan-t5-small, measured)
+const SEC_PER_STEP = { lora: 0.55, full: 0.85 };
+
+function formatTime(sec) {
+    if (sec < 90) return `~${Math.round(sec)}s`;
+    if (sec < 3600) return `~${Math.round(sec / 60)}m`;
+    return `~${(sec / 3600).toFixed(1)}h`;
+}
+
+function updateTrainingEstimate() {
+    const samples = parseInt(document.getElementById('train_samples')?.value) || 200;
+    const epochs  = parseInt(document.getElementById('epochs')?.value) || 1;
+    const batch   = parseInt(document.getElementById('batch_size')?.value) || 8;
+
+    const stepsPerEpoch = Math.ceil(samples / batch);
+    const totalSteps    = stepsPerEpoch * epochs;
+
+    document.getElementById('est-steps-epoch').textContent = stepsPerEpoch.toLocaleString();
+    document.getElementById('est-steps-total').textContent = totalSteps.toLocaleString();
+    document.getElementById('est-time-lora').innerHTML =
+        `${formatTime(totalSteps * SEC_PER_STEP.lora)} <span style="font-size:0.7rem;color:var(--text-muted)">(LoRA)</span>`;
+    document.getElementById('est-time-full').innerHTML =
+        `${formatTime(totalSteps * SEC_PER_STEP.full)} <span style="font-size:0.7rem;color:var(--text-muted)">(Full FT)</span>`;
+
+    // Warnings
+    const warn = document.getElementById('est-warning');
+    const warnText = document.getElementById('est-warning-text');
+    const messages = [];
+    if (epochs > 3) messages.push(`${epochs} epoci — risc de supraînvățare (recomandat ≤3).`);
+    if (samples < 100) messages.push(`Doar ${samples} exemple — prea puține pentru generalizare.`);
+    if (batch > samples / 2) messages.push(`Batch size (${batch}) foarte mare față de dataset (${samples} exemple).`);
+
+    if (messages.length > 0) {
+        warnText.textContent = messages.join(' ');
+        warn.classList.remove('hidden');
+    } else {
+        warn.classList.add('hidden');
+    }
+}
+
+// Hook into config inputs
+document.addEventListener('DOMContentLoaded', () => {
+    ['train_samples', 'epochs', 'batch_size'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateTrainingEstimate);
+    });
+    updateTrainingEstimate();
+});
+
+// ─── TRUNCATION ANALYSIS ─────────────────────────────────────────────────────
+let dsTruncChart = null;
+
+async function loadTruncationStats() {
+    try {
+        const res = await fetch(`${API_BASE}/api/truncation-stats`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderTruncationStats(data);
+    } catch (e) {
+        document.getElementById('ds-trunc-loading').textContent = 'Unavailable (server not running).';
+    }
+}
+
+function renderTruncationStats(data) {
+    document.getElementById('ds-trunc-loading').classList.add('hidden');
+    document.getElementById('ds-trunc-content').classList.remove('hidden');
+    document.getElementById('ds-max-len').textContent = data.max_input_length;
+    document.getElementById('ds-trunc-count').textContent = data.truncated_count.toLocaleString();
+
+    const pctEl = document.getElementById('ds-trunc-pct');
+    pctEl.textContent = `${data.truncated_pct}%`;
+    pctEl.style.color = data.truncated_pct > 10 ? '#f59e0b' : data.truncated_pct > 0 ? '#10b981' : '#10b981';
+
+    document.getElementById('ds-trunc-avg').textContent = `${data.avg_tokens} tok`;
+
+    // Warning
+    const warn = document.getElementById('ds-trunc-warn');
+    const warnText = document.getElementById('ds-trunc-warn-text');
+    if (data.truncated_pct > 20) {
+        warnText.textContent = `${data.truncated_pct}% din exemple sunt trunchiare — crește MAX_INPUT_LENGTH în config.py (actual: ${data.max_input_length}). Max detectat: ${data.max_tokens} tokeni.`;
+        warn.classList.remove('hidden');
+    } else if (data.truncated_pct > 5) {
+        warnText.textContent = `${data.truncated_pct}% trunchiare — acceptabil, dar verifică exemplele lungi (max ${data.max_tokens} tok).`;
+        warn.classList.remove('hidden');
+        warn.style.background = 'rgba(16, 185, 129, 0.08)';
+        warn.style.borderColor = 'rgba(16, 185, 129, 0.25)';
+        warn.style.color = '#10b981';
+    }
+
+    // Histogram chart
+    const hist = data.histogram;
+    const limitIdx = hist.labels.findIndex(l => {
+        const start = parseInt(l.split('–')[0]);
+        return start >= data.max_input_length;
+    });
+
+    const bgColors = hist.labels.map((_, i) => {
+        if (i >= limitIdx && limitIdx !== -1) return 'rgba(255, 69, 91, 0.7)';
+        return 'rgba(0, 188, 255, 0.6)';
+    });
+
+    const ctx = document.getElementById('ds-trunc-chart').getContext('2d');
+    if (dsTruncChart) dsTruncChart.destroy();
+    dsTruncChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: hist.labels,
+            datasets: [{
+                label: 'Exemple',
+                data: hist.values,
+                backgroundColor: bgColors,
+                borderWidth: 0,
+                borderRadius: 3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: ctx => `Tokeni: ${ctx[0].label}`,
+                        label: ctx => ` ${ctx.parsed.y} exemple`,
+                        afterLabel: ctx => {
+                            const start = parseInt(ctx.label.split('–')[0]);
+                            return start >= data.max_input_length ? '⚠ trunchiare' : '';
+                        }
+                    }
+                },
+                annotation: limitIdx !== -1 ? {
+                    annotations: {
+                        limitLine: {
+                            type: 'line',
+                            xMin: limitIdx - 0.5,
+                            xMax: limitIdx - 0.5,
+                            borderColor: '#f59e0b',
+                            borderWidth: 2,
+                            borderDash: [4, 4],
+                            label: {
+                                display: true,
+                                content: `Limită ${data.max_input_length} tok`,
+                                color: '#f59e0b',
+                                font: { size: 11 },
+                                position: 'start'
+                            }
+                        }
+                    }
+                } : {}
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#9ca3af', maxRotation: 45, font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.04)' }
+                },
+                y: {
+                    ticks: { color: '#9ca3af' },
+                    grid: { color: 'rgba(255,255,255,0.04)' }
+                }
+            }
+        }
+    });
+}
+
+// ─── DUPLICATE & LEAKAGE DETECTOR ────────────────────────────────────────────
+async function loadDuplicateStats() {
+    try {
+        const res = await fetch(`${API_BASE}/api/duplicate-stats`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderDuplicateStats(data);
+    } catch (e) {
+        const el = document.getElementById('ds-dup-loading');
+        if (el) el.textContent = 'Unavailable.';
+    }
+}
+
+function renderDuplicateStats(data) {
+    document.getElementById('ds-dup-loading').classList.add('hidden');
+    document.getElementById('ds-dup-content').classList.remove('hidden');
+
+    const dupPct = data.dup_in_train_pct;
+    const leakVal = data.leak_train_val;
+    const leakTest = data.leak_train_test;
+
+    // Train duplicates
+    const dupEl = document.getElementById('ds-dup-train');
+    dupEl.textContent = data.dup_in_train === 0
+        ? '0 ✓'
+        : `${data.dup_in_train} (${dupPct}%)`;
+    dupEl.style.color = data.dup_in_train > 0 ? '#f59e0b' : '#10b981';
+
+    // Leak val
+    const lvEl = document.getElementById('ds-leak-val');
+    lvEl.textContent = leakVal === 0
+        ? '0 ✓'
+        : `${leakVal} (${data.leak_train_val_pct}%)`;
+    lvEl.style.color = leakVal > 0 ? '#ff455b' : '#10b981';
+
+    // Leak test
+    const ltEl = document.getElementById('ds-leak-test');
+    ltEl.textContent = leakTest === 0
+        ? '0 ✓'
+        : `${leakTest} (${data.leak_train_test_pct}%)`;
+    ltEl.style.color = leakTest > 0 ? '#ff455b' : '#10b981';
+
+    // Warning or OK banner
+    const issues = [];
+    if (data.dup_in_train > 0)
+        issues.push(`${data.dup_in_train} duplicate în train (${dupPct}%) — antrenamentul va suprainvăța aceste exemple.`);
+    if (leakVal > 0)
+        issues.push(`${leakVal} exemple din train apar și în validation — acuratețea de evaluare este umflată artificial.`);
+    if (leakTest > 0)
+        issues.push(`${leakTest} exemple din train apar și în test — metricile finale nu sunt de încredere.`);
+
+    if (issues.length > 0) {
+        document.getElementById('ds-dup-warn-text').textContent = issues.join(' ');
+        document.getElementById('ds-dup-warn').classList.remove('hidden');
+    } else {
+        document.getElementById('ds-dup-ok').classList.remove('hidden');
     }
 }

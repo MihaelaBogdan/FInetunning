@@ -286,6 +286,157 @@ def predict(req: PredictionRequest):
         
     return results
 
+@app.get("/api/duplicate-stats")
+def get_duplicate_stats():
+    """Detect exact duplicates within train and leakage between splits."""
+    from datasets import load_dataset
+    import config as cfg
+
+    try:
+        raw = load_dataset(cfg.DATASET_NAME, cfg.DATASET_CONFIG)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    col = cfg.TEXT_COLUMN
+
+    def texts(split):
+        return [t.strip().lower() for t in raw[split][col]] if split in raw else []
+
+    train = texts("train")
+    val   = texts("validation")
+    test  = texts("test")
+
+    train_set = set(train)
+    dup_in_train = len(train) - len(train_set)
+    leak_val  = len(train_set & set(val))
+    leak_test = len(train_set & set(test))
+
+    return {
+        "train_total": len(train),
+        "val_total": len(val),
+        "test_total": len(test),
+        "dup_in_train": dup_in_train,
+        "dup_in_train_pct": round(100 * dup_in_train / len(train), 2) if train else 0,
+        "leak_train_val": leak_val,
+        "leak_train_val_pct": round(100 * leak_val / len(val), 2) if val else 0,
+        "leak_train_test": leak_test,
+        "leak_train_test_pct": round(100 * leak_test / len(test), 2) if test else 0,
+    }
+
+
+_trunc_cache = None
+
+@app.get("/api/truncation-stats")
+def get_truncation_stats():
+    """Tokenize a sample of train examples and return truncation statistics."""
+    global _trunc_cache
+    if _trunc_cache is not None:
+        return _trunc_cache
+
+    from datasets import load_dataset
+    import config as cfg
+
+    try:
+        raw = load_dataset(cfg.DATASET_NAME, cfg.DATASET_CONFIG)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if state.tokenizer is None:
+        state.tokenizer = load_tokenizer()
+
+    train = raw["train"]
+    # Use batch tokenization — much faster than one-by-one
+    sample_texts = [f"{cfg.TASK}: {t}" for t in train[cfg.TEXT_COLUMN][:500]]
+    encoded = state.tokenizer(sample_texts, truncation=False, padding=False)
+    token_lengths = [len(ids) for ids in encoded["input_ids"]]
+
+    limit = cfg.MAX_INPUT_LENGTH
+    truncated = [l for l in token_lengths if l > limit]
+    pct = round(100 * len(truncated) / len(token_lengths), 2) if token_lengths else 0
+    avg = round(sum(token_lengths) / len(token_lengths), 1) if token_lengths else 0
+
+    # Fixed histogram buckets: 0-15, 16-31, ... up to max
+    step = 16
+    max_tok = max(token_lengths) if token_lengths else limit
+    buckets = list(range(0, max_tok + step, step))
+    hist = [0] * (len(buckets) - 1)
+    for l in token_lengths:
+        idx = min(l // step, len(hist) - 1)
+        hist[idx] += 1
+    bucket_labels = [f"{buckets[i]}–{buckets[i+1]-1}" for i in range(len(hist))]
+
+    _trunc_cache = {
+        "max_input_length": limit,
+        "sample_size": len(token_lengths),
+        "truncated_count": len(truncated),
+        "truncated_pct": pct,
+        "avg_tokens": avg,
+        "max_tokens": max_tok,
+        "histogram": {"labels": bucket_labels, "values": hist, "limit": limit},
+    }
+    return _trunc_cache
+
+
+@app.get("/api/dataset-stats")
+def get_dataset_stats():
+    """Return label distribution, text length stats, and sample examples for the dataset."""
+    from datasets import load_dataset
+    import random as _random
+    import config as cfg
+
+    try:
+        raw = load_dataset(cfg.DATASET_NAME, cfg.DATASET_CONFIG)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not load dataset: {e}")
+
+    label_names = cfg.LABEL_NAMES
+    text_col = cfg.TEXT_COLUMN
+
+    def split_stats(split_name):
+        if split_name not in raw:
+            return None
+        ds = raw[split_name]
+        texts = ds[text_col]
+        labels = ds["label"]
+        lengths = [len(t.split()) for t in texts]
+        counts = {name: 0 for name in label_names}
+        for l in labels:
+            if 0 <= l < len(label_names):
+                counts[label_names[l]] += 1
+        # one sample per label
+        samples = []
+        seen = set()
+        indices = list(range(len(texts)))
+        _random.seed(42)
+        _random.shuffle(indices)
+        for idx in indices:
+            lbl = label_names[labels[idx]] if 0 <= labels[idx] < len(label_names) else "?"
+            if lbl not in seen:
+                samples.append({"text": texts[idx][:220], "label": lbl})
+                seen.add(lbl)
+            if len(seen) == len(label_names):
+                break
+        return {
+            "total": len(texts),
+            "label_counts": counts,
+            "avg_words": round(sum(lengths) / len(lengths), 1) if lengths else 0,
+            "min_words": min(lengths) if lengths else 0,
+            "max_words": max(lengths) if lengths else 0,
+            "samples": samples,
+        }
+
+    return {
+        "dataset": cfg.DATASET_NAME,
+        "task": cfg.TASK,
+        "label_names": label_names,
+        "splits": {
+            "train": split_stats("train"),
+            "validation": split_stats("validation"),
+            "test": split_stats("test"),
+        },
+    }
+
+
 # Create the static directory if it does not exist
 os.makedirs("static", exist_ok=True)
 

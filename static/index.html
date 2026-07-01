@@ -48,6 +48,10 @@
                     <i class="fa-solid fa-gamepad"></i>
                     <span>Playground</span>
                 </button>
+                <button class="nav-btn" data-tab="dataset">
+                    <i class="fa-solid fa-database"></i>
+                    <span>Dataset Explorer</span>
+                </button>
             </nav>
 
             <!-- Main Content Area -->
@@ -155,6 +159,45 @@
                                     <div class="console-line system">[System] Interface initialized. Models are ready.</div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Training Estimate Card -->
+                    <div class="card glass-card margin-top" id="training-estimate-card">
+                        <div class="card-header">
+                            <i class="fa-solid fa-calculator text-yellow"></i>
+                            <h2>Training Estimate</h2>
+                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">actualizat automat cu configurația curentă</span>
+                        </div>
+                        <div class="estimate-grid">
+                            <div class="estimate-stat">
+                                <div class="estimate-label">Pași / Epocă</div>
+                                <div class="estimate-value" id="est-steps-epoch">—</div>
+                            </div>
+                            <div class="estimate-stat">
+                                <div class="estimate-label">Total pași</div>
+                                <div class="estimate-value" id="est-steps-total">—</div>
+                            </div>
+                            <div class="estimate-stat">
+                                <div class="estimate-label">Timp estimat LoRA</div>
+                                <div class="estimate-value text-blue" id="est-time-lora">—</div>
+                            </div>
+                            <div class="estimate-stat">
+                                <div class="estimate-label">Timp estimat Full FT</div>
+                                <div class="estimate-value text-red" id="est-time-full">—</div>
+                            </div>
+                            <div class="estimate-stat">
+                                <div class="estimate-label">Param. antrenați LoRA</div>
+                                <div class="estimate-value text-blue" id="est-params-lora">~344K <span style="font-size:0.7rem;color:var(--text-muted)">(0.45%)</span></div>
+                            </div>
+                            <div class="estimate-stat">
+                                <div class="estimate-label">Param. antrenați Full FT</div>
+                                <div class="estimate-value text-red" id="est-params-full">~77M <span style="font-size:0.7rem;color:var(--text-muted)">(100%)</span></div>
+                            </div>
+                        </div>
+                        <div id="est-warning" class="estimate-warning hidden">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span id="est-warning-text"></span>
                         </div>
                     </div>
 
@@ -383,7 +426,118 @@
                         <div class="emotion-chart-legend" id="emotion-chart-legend"></div>
                     </div>
                 </section>
-                
+
+                <!-- ─── TAB 4: DATASET EXPLORER ─── -->
+                <section class="tab-content" id="tab-dataset">
+                    <!-- Header card -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <i class="fa-solid fa-database text-blue"></i>
+                            <h2>Dataset Explorer</h2>
+                        </div>
+                        <p style="color:var(--text-muted);margin:0">
+                            Overview of <strong id="ds-name" style="color:var(--text-main)">—</strong> &nbsp;·&nbsp;
+                            Task: <strong id="ds-task" style="color:var(--text-main)">—</strong>
+                        </p>
+                    </div>
+
+                    <!-- Split stats row -->
+                    <div class="analytics-grid margin-top" id="ds-split-cards">
+                        <!-- filled by JS -->
+                    </div>
+
+                    <!-- Label distribution chart + per-label bar -->
+                    <div class="grid-2col margin-top">
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <i class="fa-solid fa-chart-pie text-yellow"></i>
+                                <h3>Label Distribution — Train</h3>
+                            </div>
+                            <div class="chart-container-large">
+                                <canvas id="ds-label-chart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <i class="fa-solid fa-align-left text-green"></i>
+                                <h3>Text Length — Train (words)</h3>
+                            </div>
+                            <div class="chart-container-large">
+                                <canvas id="ds-len-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Class imbalance warning -->
+                    <div id="ds-imbalance-warning" class="estimate-warning hidden margin-top">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <span id="ds-imbalance-text"></span>
+                    </div>
+
+                    <!-- Split comparison grouped bar -->
+                    <div class="card glass-card margin-top">
+                        <div class="card-header">
+                            <i class="fa-solid fa-arrows-left-right text-purple"></i>
+                            <h3>Distribuție Labeluri — Train vs Val vs Test</h3>
+                        </div>
+                        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.8rem">
+                            Verifică dacă split-urile au aceeași distribuție — o neconcordanță umflă sau scade artificial metricile de evaluare.
+                        </p>
+                        <div class="chart-container-large">
+                            <canvas id="ds-split-compare-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Duplicate & Leakage Detector -->
+                    <div class="card glass-card margin-top">
+                        <div class="card-header">
+                            <i class="fa-solid fa-copy text-red"></i>
+                            <h3>Duplicate &amp; Data Leakage Detector</h3>
+                        </div>
+                        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 1rem">
+                            Duplicate în train umflă loss-ul; leak între train și val/test umflă acuratețea — ambele îți mint metricile.
+                        </p>
+                        <div id="ds-dup-loading" style="color:var(--text-muted);font-size:0.85rem">
+                            <i class="fa-solid fa-spinner fa-spin"></i> Analiză duplicate…
+                        </div>
+                        <div id="ds-dup-content" class="hidden">
+                            <div class="estimate-grid">
+                                <div class="estimate-stat">
+                                    <div class="estimate-label">Duplicate în Train</div>
+                                    <div class="estimate-value" id="ds-dup-train">—</div>
+                                </div>
+                                <div class="estimate-stat">
+                                    <div class="estimate-label">Leak Train → Val</div>
+                                    <div class="estimate-value" id="ds-leak-val">—</div>
+                                </div>
+                                <div class="estimate-stat">
+                                    <div class="estimate-label">Leak Train → Test</div>
+                                    <div class="estimate-value" id="ds-leak-test">—</div>
+                                </div>
+                            </div>
+                            <div id="ds-dup-warn" class="estimate-warning hidden" style="margin-top:1rem">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <span id="ds-dup-warn-text"></span>
+                            </div>
+                            <div id="ds-dup-ok" class="estimate-warning hidden" style="margin-top:1rem;background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.25);color:#10b981">
+                                <i class="fa-solid fa-circle-check"></i>
+                                <span>Dataset curat — fără duplicate și fără leak între split-uri.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sample examples -->
+                    <div class="card glass-card margin-top">
+                        <div class="card-header">
+                            <i class="fa-solid fa-eye text-blue"></i>
+                            <h3>Sample Examples (one per label)</h3>
+                        </div>
+                        <div id="ds-samples" class="ds-samples-grid">
+                            <p style="color:var(--text-muted)">Loading…</p>
+                        </div>
+                    </div>
+                </section>
+
             </main>
         </div>
     </div>
