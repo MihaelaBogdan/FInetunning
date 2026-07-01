@@ -1,12 +1,12 @@
 """
-Punct de intrare principal.
-Rulează ambele experimente secvențial și generează raportul comparativ.
+Main entry point.
+Runs both experiments sequentially and generates the comparative report.
 
-Utilizare:
-    python run_experiment.py              # ambele metode
-    python run_experiment.py --lora       # doar LoRA
-    python run_experiment.py --full       # doar Full FT
-    python run_experiment.py --report     # doar generează raportul din rezultate existente
+Usage:
+    python run_experiment.py              # both methods
+    python run_experiment.py --lora       # only LoRA
+    python run_experiment.py --full       # only Full FT
+    python run_experiment.py --report     # only generate the report from existing results
 """
 
 import argparse
@@ -19,9 +19,9 @@ os.makedirs("logs", exist_ok=True)
 
 def main():
     parser = argparse.ArgumentParser(description="LoRA vs Full Fine-Tuning Experiment")
-    parser.add_argument("--lora",   action="store_true", help="Rulează doar LoRA")
-    parser.add_argument("--full",   action="store_true", help="Rulează doar Full FT")
-    parser.add_argument("--report", action="store_true", help="Generează doar raportul")
+    parser.add_argument("--lora",   action="store_true", help="Run only LoRA")
+    parser.add_argument("--full",   action="store_true", help="Run only Full FT")
+    parser.add_argument("--report", action="store_true", help="Generate only the report")
     args = parser.parse_args()
 
     run_lora = args.lora or (not args.lora and not args.full and not args.report)

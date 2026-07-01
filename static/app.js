@@ -1,36 +1,47 @@
 // ─── STATE MANAGEMENT ───
+const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
 let liveLossChart = null;
 let timeMemChart = null;
 let paramsSizeChart = null;
+let emotionScoreChart = null;
 let eventSource = null;
 
-// Culori tematice pentru Chart.js
+// Theme colors for Chart.js
 const colors = {
     lora: '#00bcff',
     loraGlow: 'rgba(0, 188, 255, 0.15)',
     full: '#ff455b',
     fullGlow: 'rgba(255, 69, 91, 0.15)',
+    base: '#9ca3af',
+    baseGlow: 'rgba(156, 163, 175, 0.15)',
     grid: 'rgba(255, 255, 255, 0.05)',
     text: '#9ca3af'
 };
 
-// ─── INITIALIZARE LA LOAD ───
+const modelChartProps = {
+    base: { label: 'Base', borderColor: colors.base, backgroundColor: 'rgba(156, 163, 175, 0.55)' },
+    lora: { label: 'LoRA', borderColor: colors.lora, backgroundColor: 'rgba(0, 188, 255, 0.55)' },
+    full: { label: 'Full FT', borderColor: colors.full, backgroundColor: 'rgba(255, 69, 91, 0.55)' }
+};
+
+// ─── INITIALIZE ON LOAD ───
 document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     loadConfig();
     initLiveLossChart();
+    initEmotionScoreChart();
     checkTrainingStatus();
     loadAnalytics();
     setupSSE();
     
-    // Formular configurare
+    // Configuration form
     document.getElementById('config-form').addEventListener('submit', saveConfig);
     
-    // Butoane antrenament
+    // Training buttons
     document.getElementById('start-lora-btn').addEventListener('click', () => startTraining('lora'));
     document.getElementById('start-full-btn').addEventListener('click', () => startTraining('full'));
     
-    // Consola
+    // Console
     document.getElementById('clear-console-btn').addEventListener('click', () => {
         document.getElementById('console-output').innerHTML = '';
     });
@@ -39,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('predict-btn').addEventListener('click', runPlaygroundInference);
 });
 
-// ─── LOGICĂ TABS ───
+// ─── TABS LOGIC ───
 function initTabs() {
     const navButtons = document.querySelectorAll('.nav-btn');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -54,9 +65,13 @@ function initTabs() {
             btn.classList.add('active');
             document.getElementById(`tab-${targetTab}`).classList.add('active');
             
-            // Re-randare grafice dacă este cazul pentru a evita bug-uri de dimensiune
+            // Re-render charts if needed to avoid size issues
             if (targetTab === 'analytics') {
                 loadAnalytics();
+            }
+            if (targetTab === 'playground' && emotionScoreChart) {
+                emotionScoreChart.resize();
+                emotionScoreChart.update();
             }
         });
     });
@@ -65,7 +80,7 @@ function initTabs() {
 // ─── CONFIGURATION ENDPOINTS ───
 async function loadConfig() {
     try {
-        const res = await fetch('/api/config');
+        const res = await fetch(`${API_BASE}/api/config`);
         const config = await res.json();
         
         document.getElementById('train_samples').value = config.train_samples;
@@ -76,9 +91,9 @@ async function loadConfig() {
         document.getElementById('lora_r').value = config.lora_r;
         document.getElementById('lora_alpha').value = config.lora_alpha;
         
-        writeToConsole("[Sistem] Configurația curentă a fost încărcată cu succes.");
+        writeToConsole("[System] Current configuration loaded successfully.");
     } catch (err) {
-        writeToConsole("[Eroare] Eșec la încărcarea configurației: " + err.message, "error");
+        writeToConsole("[Error] Failed to load configuration: " + err.message, "error");
     }
 }
 
@@ -95,20 +110,20 @@ async function saveConfig(e) {
     };
 
     try {
-        const res = await fetch('/api/config', {
+        const res = await fetch(`${API_BASE}/api/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
         });
         const data = await res.json();
         if (res.ok) {
-            writeToConsole("[Sistem] Configurația a fost salvată pe server.");
-            alert("Configurația a fost salvată!");
+            writeToConsole("[System] Configuration saved on server.");
+            alert("Configuration saved!");
         } else {
-            writeToConsole("[Eroare] Serverul a respins configurația: " + data.detail, "error");
+            writeToConsole("[Error] Server rejected configuration: " + data.detail, "error");
         }
     } catch (err) {
-        writeToConsole("[Eroare] Eșec la salvarea configurației: " + err.message, "error");
+        writeToConsole("[Error] Failed to save configuration: " + err.message, "error");
     }
 }
 
@@ -118,20 +133,20 @@ async function startTraining(method) {
         const res = await fetch(`/api/train/${method}`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
-            writeToConsole(`[Antrenament] Pornire sesiune pentru: ${method.toUpperCase()}...`);
+            writeToConsole(`[Training] Starting session for: ${method.toUpperCase()}...`);
             setTrainingUI(true, method);
             resetLiveChartForMethod(method);
         } else {
-            writeToConsole(`[Eroare] Nu s-a putut porni antrenamentul: ${data.detail}`, "error");
+            writeToConsole(`[Error] Could not start training: ${data.detail}`, "error");
         }
     } catch (err) {
-        writeToConsole(`[Eroare] Conexiune eșuată: ${err.message}`, "error");
+        writeToConsole(`[Error] Connection failed: ${err.message}`, "error");
     }
 }
 
 async function checkTrainingStatus() {
     try {
-        const res = await fetch('/api/status');
+        const res = await fetch(`${API_BASE}/api/status`);
         const status = await res.json();
         if (status.is_training) {
             setTrainingUI(true, status.current_method);
@@ -142,7 +157,7 @@ async function checkTrainingStatus() {
             setTrainingUI(false);
         }
     } catch (err) {
-        console.error("Eroare la verificarea statusului:", err);
+        console.error("Error checking status:", err);
     }
 }
 
@@ -161,9 +176,9 @@ function setTrainingUI(isTraining, method = null) {
         progressSec.classList.remove('hidden');
         
         const methodTitle = method === 'lora' ? 'LoRA Fine-Tuning' : 'Full Fine-Tuning';
-        document.getElementById('progress-title').innerText = `Antrenament ${methodTitle} în curs...`;
+        document.getElementById('progress-title').innerText = `Training ${methodTitle} in progress...`;
         
-        statusText.innerText = `Antrenare ${method === 'lora' ? 'LoRA' : 'Full FT'}...`;
+        statusText.innerText = `Training ${method === 'lora' ? 'LoRA' : 'Full FT'}...`;
         statusDot.className = `status-dot pulsing-${method === 'lora' ? 'blue' : 'red'}`;
     } else {
         loraBtn.disabled = false;
@@ -171,7 +186,7 @@ function setTrainingUI(isTraining, method = null) {
         saveBtn.disabled = false;
         progressSec.classList.add('hidden');
         
-        statusText.innerText = "Sistem Pregătit";
+        statusText.innerText = "System Ready";
         statusDot.className = "status-dot green";
     }
 }
@@ -197,21 +212,21 @@ function setupSSE() {
         eventSource.close();
     }
     
-    eventSource = new EventSource('/api/stream-progress');
+    eventSource = new EventSource(`${API_BASE}/api/stream-progress`);
     
     eventSource.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         
         if (msg.type === 'status') {
             if (msg.status === 'started') {
-                writeToConsole(`[Server] Antrenamentul ${msg.method.toUpperCase()} a început oficial.`, msg.method + "-color");
+                writeToConsole(`[Server] ${msg.method.toUpperCase()} training started.`, msg.method + "-color");
                 setTrainingUI(true, msg.method);
             } else if (msg.status === 'completed') {
-                writeToConsole(`[Server] Antrenamentul ${msg.method.toUpperCase()} s-a finalizat cu succes!`, "system");
+                writeToConsole(`[Server] ${msg.method.toUpperCase()} training completed successfully!`, "system");
                 setTrainingUI(false);
-                loadAnalytics(); // Reîncarcă analizele cu noile date
+                loadAnalytics(); // Reload analytics with fresh data
             } else if (msg.status === 'failed') {
-                writeToConsole(`[Eroare Server] Antrenamentul ${msg.method.toUpperCase()} a eșuat: ${msg.error}`, "error");
+                writeToConsole(`[Server Error] ${msg.method.toUpperCase()} training failed: ${msg.error}`, "error");
                 setTrainingUI(false);
             }
         } 
@@ -219,8 +234,8 @@ function setupSSE() {
         else if (msg.type === 'progress') {
             updateProgressUI(msg.method, msg.data);
             
-            // Adăugăm în consolă log-uri de progres
-            const stepStr = `[Pas ${msg.data.step}/${msg.data.max_steps}]`;
+            // Add progress logs to the console
+            const stepStr = `[Step ${msg.data.step}/${msg.data.max_steps}]`;
             const lossStr = msg.data.loss !== null ? `Loss: ${msg.data.loss.toFixed(4)}` : '';
             const evalLossStr = msg.data.eval_loss !== null ? `Eval Loss: ${msg.data.eval_loss.toFixed(4)}` : '';
             
@@ -228,7 +243,7 @@ function setupSSE() {
                 writeToConsole(`${stepStr} ${lossStr} ${evalLossStr}`, msg.method + "-color");
             }
             
-            // Adăugăm puncte în graficul de live loss
+            // Add points to the live loss chart
             if (msg.data.loss !== null) {
                 addLiveLossPoint(msg.method, msg.data.step, msg.data.loss);
             }
@@ -237,7 +252,7 @@ function setupSSE() {
     
     eventSource.onerror = (err) => {
         console.error("SSE Error:", err);
-        writeToConsole("[Sistem] Conexiunea la fluxul de progres s-a pierdut. Încercare de reconectare...", "error");
+        writeToConsole("[System] Progress stream connection lost. Attempting to reconnect...", "error");
     };
 }
 
@@ -289,12 +304,12 @@ function initLiveLossChart() {
             scales: {
                 x: {
                     type: 'linear',
-                    title: { display: true, text: 'Pași Antrenament', color: colors.text },
+                    title: { display: true, text: 'Training Steps', color: colors.text },
                     grid: { color: colors.grid },
                     ticks: { color: colors.text }
                 },
                 y: {
-                    title: { display: true, text: 'Valoare Loss', color: colors.text },
+                    title: { display: true, text: 'Loss Value', color: colors.text },
                     grid: { color: colors.grid },
                     ticks: { color: colors.text }
                 }
@@ -304,6 +319,76 @@ function initLiveLossChart() {
             }
         }
     });
+}
+
+function initEmotionScoreChart() {
+    const ctx = document.getElementById('emotionScoreChart').getContext('2d');
+    emotionScoreChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: []
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    title: { display: true, text: 'Emotion', color: colors.text },
+                    grid: { color: colors.grid },
+                    ticks: { color: colors.text }
+                },
+                y: {
+                    title: { display: true, text: 'Probability', color: colors.text },
+                    min: 0,
+                    max: 1,
+                    grid: { color: colors.grid },
+                    ticks: {
+                        color: colors.text,
+                        callback: (value) => `${value * 100}%`
+                    }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: colors.text } },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `${context.dataset.label}: ${(context.parsed.y * 100).toFixed(1)}%`
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateEmotionScoreChart(scoreData) {
+    const availableScores = Object.values(scoreData).find(scores => scores && Object.keys(scores).length > 0);
+    const labels = availableScores ? Object.keys(availableScores) : [];
+    emotionScoreChart.data.labels = labels;
+    emotionScoreChart.data.datasets = [];
+
+    Object.entries(scoreData).forEach(([key, scores]) => {
+        if (!scores || Object.keys(scores).length === 0) {
+            return;
+        }
+        const props = modelChartProps[key];
+        emotionScoreChart.data.datasets.push({
+            label: props.label,
+            data: labels.map(label => scores[label] ?? 0),
+            backgroundColor: props.backgroundColor,
+            borderColor: props.borderColor,
+            borderWidth: 1,
+            borderRadius: 6,
+            categoryPercentage: 0.7,
+            barPercentage: 0.8
+        });
+    });
+
+    emotionScoreChart.update();
+    emotionScoreChart.resize();
+    document.getElementById('emotion-chart-legend').innerText = labels.length
+        ? 'Higher bars indicate stronger predicted probability for the emotion on the same input text.'
+        : 'Run inference to view the full emotion probability breakdown for each available model.';
 }
 
 function resetLiveChartForMethod(method) {
@@ -316,16 +401,16 @@ function addLiveLossPoint(method, step, loss) {
     const datasetIndex = method === 'lora' ? 0 : 1;
     liveLossChart.data.datasets[datasetIndex].data.push({ x: step, y: loss });
     
-    // Sortăm după pași pentru siguranță
+    // Sort by step to keep the chart data ordered
     liveLossChart.data.datasets[datasetIndex].data.sort((a, b) => a.x - b.x);
     
-    liveLossChart.update('none'); // Update silențios fără animație pentru viteză
+    liveLossChart.update('none'); // Update silently without animation for speed
 }
 
 // ─── TAB 2: ANALYTICS & GREEN AI ───
 async function loadAnalytics() {
     try {
-        const res = await fetch('/api/metrics');
+        const res = await fetch(`${API_BASE}/api/metrics`);
         const metrics = await res.json();
         
         const hasLora = metrics.lora !== null;
@@ -334,7 +419,7 @@ async function loadAnalytics() {
         const alertSec = document.getElementById('metrics-alert');
         const contentSec = document.getElementById('analytics-content');
         
-        // Controlăm vizibilitatea overlays în tabul de playground
+        // Control overlay visibility in the playground tab
         document.getElementById('overlay-lora').style.display = hasLora ? 'none' : 'flex';
         document.getElementById('overlay-full').style.display = hasFull ? 'none' : 'flex';
         
@@ -342,7 +427,7 @@ async function loadAnalytics() {
             alertSec.style.display = 'flex';
             contentSec.style.display = 'none';
             
-            // Dacă avem doar una dintre ele, populăm parțial KPIs dacă dorim, dar graficele au nevoie de ambele pentru studiu comparativ complet.
+            // If only one model is available, we can populate partial KPIs, but charts need both for a full comparison.
             return;
         }
         
@@ -356,7 +441,7 @@ async function loadAnalytics() {
         const energySavings = ((metrics.full.estimated_energy_kwh - metrics.lora.estimated_energy_kwh) / metrics.full.estimated_energy_kwh * 100).toFixed(1);
         document.getElementById('kpi-energy-savings').innerText = `-${energySavings}%`;
         
-        // Render Grafice Comparativ
+        // Render comparative charts
         renderTimeMemChart(metrics.lora, metrics.full);
         renderParamsSizeChart(metrics.lora, metrics.full);
         
@@ -374,7 +459,7 @@ async function loadAnalytics() {
         document.getElementById('green-co2-saved').innerText = `${co2Saved} g CO2`;
         
     } catch (err) {
-        console.error("Eroare la încărcarea analizelor:", err);
+        console.error("Error loading analytics:", err);
     }
 }
 
@@ -388,7 +473,7 @@ function renderTimeMemChart(lora, full) {
     timeMemChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: ['Timp Antrenare (sec)', 'Peak RAM (MB)'],
+            labels: ['Training Time (sec)', 'Peak RAM (MB)'],
             datasets: [
                 {
                     label: 'LoRA',
@@ -411,7 +496,7 @@ function renderTimeMemChart(lora, full) {
             maintainAspectRatio: false,
             scales: {
                 x: { grid: { color: colors.grid }, ticks: { color: colors.text } },
-                y: { grid: { color: colors.grid }, ticks: { color: colors.text }, type: 'logarithmic' } // Scala logaritmică ajută la vizualizarea diferențelor mari
+                y: { grid: { color: colors.grid }, ticks: { color: colors.text }, type: 'logarithmic' } // Log scale helps visualize large differences
             },
             plugins: {
                 legend: { labels: { color: colors.text } }
@@ -430,7 +515,7 @@ function renderParamsSizeChart(lora, full) {
     paramsSizeChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: ['Parametri Antrenați (Milioane)', 'Dimensiune Model/Checkpoint (MB)'],
+            labels: ['Trained Parameters (Million)', 'Model/Checkpoint Size (MB)'],
             datasets: [
                 {
                     label: 'LoRA',
@@ -466,32 +551,34 @@ function renderParamsSizeChart(lora, full) {
 async function runPlaygroundInference() {
     const text = document.getElementById('playground-text').value.trim();
     if (!text) {
-        alert("Te rog introdu un text pentru analiză!");
+        alert("Please enter text for analysis.");
         return;
     }
 
     const predictBtn = document.getElementById('predict-btn');
     predictBtn.disabled = true;
-    predictBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Se procesează...';
+    predictBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
 
-    // Resetăm UI-ul predicțiilor și arătăm starea de încărcare
+    // Reset the prediction UI and show loading state
     const models = ['base', 'lora', 'full'];
     models.forEach(m => {
         document.getElementById(`res-${m}-placeholder`).style.display = 'none';
         document.getElementById(`res-${m}-content`).classList.remove('hidden');
-        document.getElementById(`res-${m}-label`).innerText = "Analiză...";
+        document.getElementById(`res-${m}-label`).innerText = "Processing...";
         document.getElementById(`res-${m}-val`).innerText = "...";
         document.getElementById(`res-${m}-bar`).style.width = '0%';
     });
 
     try {
-        const res = await fetch('/api/predict', {
+        const res = await fetch(`${API_BASE}/api/predict`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text })
         });
         const data = await res.json();
         
+        const scorePayload = { base: null, lora: null, full: null };
+
         models.forEach(m => {
             const mData = data[m];
             const contentDiv = document.getElementById(`res-${m}-content`);
@@ -501,35 +588,47 @@ async function runPlaygroundInference() {
             const iconDiv = document.getElementById(`res-${m}-icon`);
             
             if (mData && mData.available) {
-                // Setează clasa pentru etichetă (pozitiv/negativ)
+                // Set the label text for the prediction
+                const labelLower = mData.label.toLowerCase();
                 const labelUpper = mData.label.toUpperCase();
                 labelDiv.innerText = labelUpper;
-                labelDiv.className = `sentiment-label ${labelUpper.toLowerCase()}`;
+                labelDiv.className = `sentiment-label ${labelLower}`;
                 
-                // Setează valoarea și bara de încredere
+                // Set the confidence value and bar
                 const confPct = Math.round(mData.confidence * 100);
                 valSpan.innerText = `${confPct}%`;
                 barDiv.style.width = `${confPct}%`;
                 
-                // Schimbă iconița în funcție de sentiment
-                if (labelUpper === 'POSITIVE') {
-                    iconDiv.innerHTML = '<i class="fa-solid fa-face-smile text-green"></i>';
-                } else {
-                    iconDiv.innerHTML = '<i class="fa-solid fa-face-frown text-red"></i>';
-                }
+                // Choose a more appropriate icon for the emotion label
+                const emotionIcon = {
+                    sadness: 'fa-face-frown text-red',
+                    joy: 'fa-face-laugh text-yellow',
+                    love: 'fa-heart text-pink',
+                    anger: 'fa-face-angry text-red',
+                    fear: 'fa-face-grimace text-orange',
+                    surprise: 'fa-face-surprise text-blue'
+                }[labelLower] || 'fa-face-meh text-gray';
+                iconDiv.innerHTML = `<i class="fa-solid ${emotionIcon}"></i>`;
+
+                scorePayload[m] = mData.scores || null;
             } else {
-                // Dacă modelul nu este disponibil, ascunde conținutul și arată overlay-ul corespunzător
+                // If the model is unavailable, hide the content and show the overlay
                 contentDiv.classList.add('hidden');
                 document.getElementById(`res-${m}-placeholder`).style.display = 'block';
-                document.getElementById(`res-${m}-placeholder`).innerText = "Model indisponibil";
+                document.getElementById(`res-${m}-placeholder`).innerText = "Model unavailable";
             }
         });
+
+        updateEmotionScoreChart(scorePayload);
         
     } catch (err) {
-        console.error("Eroare la rularea inferenței:", err);
-        alert("A apărut o eroare la comunicarea cu serverul.");
+        console.error("Error running inference:", err);
+        alert("An error occurred while communicating with the server.");
     } finally {
         predictBtn.disabled = false;
-        predictBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Analizează Sentimentul';
+        predictBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Analyze Emotion';
+        if (emotionScoreChart) {
+            emotionScoreChart.resize();
+        }
     }
 }

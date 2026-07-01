@@ -1,6 +1,6 @@
 """
-Generează raportul comparativ LoRA vs Full Fine-Tuning.
-Produce tabele și grafice vizuale.
+Generate a comparative LoRA vs Full Fine-Tuning report.
+Produces tables and visual charts.
 """
 
 import os
@@ -25,7 +25,7 @@ def load_metrics():
         if os.path.exists(path):
             results[method] = ExperimentMetrics.load(path)
         else:
-            print(f"  [!] Lipsesc rezultatele pentru {method} ({path})")
+            print(f"  [!] Missing results for {method} ({path})")
     return results
 
 
@@ -33,18 +33,18 @@ def print_summary_table(results):
     rows = []
     for method, m in results.items():
         rows.append({
-            "Metodă": LABELS[method],
-            "Param. antrenați": f"{m.trainable_params:,}",
-            "% din total": f"{m.trainable_pct:.4f}%",
-            "Timp (s)": f"{m.train_time_sec:.1f}",
-            "RAM peak (MB)": f"{m.peak_ram_mb:.0f}",
-            "GPU peak (MB)": f"{m.peak_gpu_mb:.0f}",
-            "Acuratețe": f"{m.final_accuracy:.4f}",
+            "Method": LABELS[method],
+            "Trainable Params": f"{m.trainable_params:,}",
+            "% of Total": f"{m.trainable_pct:.4f}%",
+            "Time (s)": f"{m.train_time_sec:.1f}",
+            "RAM Peak (MB)": f"{m.peak_ram_mb:.0f}",
+            "GPU Peak (MB)": f"{m.peak_gpu_mb:.0f}",
+            "Accuracy": f"{m.final_accuracy:.4f}",
             "Checkpoint (MB)": f"{m.checkpoint_size_mb:.1f}",
         })
-    df = pd.DataFrame(rows).set_index("Metodă")
+    df = pd.DataFrame(rows).set_index("Method")
     print("\n" + "=" * 70)
-    print("  RAPORT COMPARATIV: LoRA vs Full Fine-Tuning")
+    print("  COMPARATIVE REPORT: LoRA vs Full Fine-Tuning")
     print("=" * 70)
     print(df.to_string())
     print("=" * 70)
@@ -57,11 +57,11 @@ def print_summary_table(results):
         acc_diff = (lm.final_accuracy - fm.final_accuracy) * 100
         param_ratio = fm.trainable_params / lm.trainable_params if lm.trainable_params > 0 else 0
 
-        print(f"  → LoRA antrenează de {param_ratio:.0f}x mai puțini parametri")
-        print(f"  → Full FT este de {speedup:.1f}x mai lent")
-        print(f"  → Checkpointul Full FT este de {size_ratio:.0f}x mai mare")
-        acc_word = "mai bun" if acc_diff > 0 else "mai slab"
-        print(f"  → LoRA este cu {abs(acc_diff):.2f}% {acc_word} ca acuratețe față de Full FT")
+        print(f"  → LoRA trains {param_ratio:.0f}x fewer parameters")
+        print(f"  → Full FT is {speedup:.1f}x slower")
+        print(f"  → Full FT checkpoint is {size_ratio:.0f}x larger")
+        acc_word = "better" if acc_diff > 0 else "worse"
+        print(f"  → LoRA is {abs(acc_diff):.2f}% {acc_word} in accuracy compared to Full FT")
 
 
 def plot_results(results):
@@ -69,37 +69,37 @@ def plot_results(results):
     methods = list(results.keys())
 
     fig, axes = plt.subplots(2, 3, figsize=(16, 10))
-    fig.suptitle("Comparativ: LoRA vs Full Fine-Tuning\n(flan-t5-small · SST-2 · 2000 exemple)",
+    fig.suptitle("Comparative: LoRA vs Full Fine-Tuning\n(flan-t5-small · dair-ai/emotion)",
                  fontsize=14, fontweight="bold")
 
-    # 1. Parametri antrenați
+    # 1. Trainable parameters
     ax = axes[0, 0]
     vals = [results[m].trainable_params / 1e6 for m in methods]
     bars = ax.bar([LABELS[m] for m in methods], vals,
                   color=[COLORS[m] for m in methods], edgecolor="white", linewidth=1.5)
-    ax.set_title("Parametri antrenați (milioane)")
-    ax.set_ylabel("Milioane")
+    ax.set_title("Trainable Parameters (Millions)")
+    ax.set_ylabel("Millions")
     for bar, v in zip(bars, vals):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05,
                 f"{v:.2f}M", ha="center", va="bottom", fontsize=10)
 
-    # 2. Timp antrenament
+    # 2. Training time
     ax = axes[0, 1]
     vals = [results[m].train_time_sec for m in methods]
     bars = ax.bar([LABELS[m] for m in methods], vals,
                   color=[COLORS[m] for m in methods], edgecolor="white", linewidth=1.5)
-    ax.set_title("Timp antrenament (secunde)")
-    ax.set_ylabel("Secunde")
+    ax.set_title("Training Time (Seconds)")
+    ax.set_ylabel("Seconds")
     for bar, v in zip(bars, vals):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
                 f"{v:.0f}s", ha="center", va="bottom", fontsize=10)
 
-    # 3. Acuratețe
+    # 3. Accuracy
     ax = axes[0, 2]
     vals = [results[m].final_accuracy * 100 for m in methods]
     bars = ax.bar([LABELS[m] for m in methods], vals,
                   color=[COLORS[m] for m in methods], edgecolor="white", linewidth=1.5)
-    ax.set_title("Acuratețe test (%)")
+    ax.set_title("Test Accuracy (%)")
     ax.set_ylabel("%")
     ax.set_ylim(0, 105)
     for bar, v in zip(bars, vals):
@@ -111,18 +111,18 @@ def plot_results(results):
     vals = [results[m].peak_ram_mb for m in methods]
     bars = ax.bar([LABELS[m] for m in methods], vals,
                   color=[COLORS[m] for m in methods], edgecolor="white", linewidth=1.5)
-    ax.set_title("RAM peak (MB)")
+    ax.set_title("RAM Peak (MB)")
     ax.set_ylabel("MB")
     for bar, v in zip(bars, vals):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 5,
                 f"{v:.0f}", ha="center", va="bottom", fontsize=10)
 
-    # 5. Dimensiune checkpoint
+    # 5. Checkpoint size
     ax = axes[1, 1]
     vals = [results[m].checkpoint_size_mb for m in methods]
     bars = ax.bar([LABELS[m] for m in methods], vals,
                   color=[COLORS[m] for m in methods], edgecolor="white", linewidth=1.5)
-    ax.set_title("Dimensiune checkpoint (MB)")
+    ax.set_title("Checkpoint Size (MB)")
     ax.set_ylabel("MB")
     for bar, v in zip(bars, vals):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
@@ -136,8 +136,8 @@ def plot_results(results):
             ax.plot(epochs, m.eval_loss_history,
                     color=COLORS[method], label=LABELS[method],
                     marker="o", linewidth=2, markersize=6)
-    ax.set_title("Eval Loss per epocă")
-    ax.set_xlabel("Epocă")
+    ax.set_title("Eval Loss per epoch")
+    ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
     ax.legend()
     ax.grid(alpha=0.3)

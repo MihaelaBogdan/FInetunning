@@ -5,15 +5,17 @@ import threading
 import torch
 import uvicorn
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
-# Importuri din proiectul existent
+# Project imports
 from config import (
     BASE_MODEL, OUTPUT_DIR, LORA_R, LORA_ALPHA,
-    TRAIN_SAMPLES, BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE, FULL_LR
+    TRAIN_SAMPLES, BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE, FULL_LR,
+    TEXT_COLUMN, LABEL_NAMES, TASK,
 )
 from data_utils import load_tokenizer
 from train_lora import train_lora, get_device
@@ -22,6 +24,14 @@ from peft import PeftModel
 from transformers import AutoModelForSeq2SeqLM
 
 app = FastAPI(title="LoRA vs Full Fine-Tuning Dashboard")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ─── State Global ─────────────────────────────────────────────────────────────
 class AppState:
@@ -38,7 +48,7 @@ class AppState:
             "lora_r": LORA_R,
             "lora_alpha": LORA_ALPHA,
         }
-        # Modele cache
+        # Cached models
         self.tokenizer = None
         self.base_model = None
         self.lora_model = None
@@ -46,7 +56,7 @@ class AppState:
 
 state = AppState()
 
-# ─── Broadcaster pentru Progres SSE ───────────────────────────────────────────
+# ─── Progress SSE broadcaster ─────────────────────────────────────────────────
 class ProgressBroadcaster:
     def __init__(self):
         self.listeners = []
@@ -66,13 +76,13 @@ class ProgressBroadcaster:
 
 broadcaster = ProgressBroadcaster()
 
-# ─── Helperi Antrenament ──────────────────────────────────────────────────────
+# ─── Training helpers ────────────────────────────────────────────────────────
 def run_training_thread(method: str, params: dict):
     state.is_training = True
     state.current_method = method
     state.current_progress = {"status": "started", "progress_pct": 0}
     
-    # Trimitem starea inițială
+    # Send initial state
     broadcaster.broadcast({"type": "status", "status": "started", "method": method})
 
     def progress_callback(info):
@@ -90,7 +100,7 @@ def run_training_thread(method: str, params: dict):
                 lora_alpha=params["lora_alpha"],
                 progress_callback=progress_callback
             )
-            # Resetăm modelul LoRA cached pentru a-l reîncărca la următoarea predicție
+            # Reset cached LoRA model so it reloads for the next prediction
             state.lora_model = None
         elif method == "full":
             train_full(
@@ -100,7 +110,7 @@ def run_training_thread(method: str, params: dict):
                 train_samples=params["train_samples"],
                 progress_callback=progress_callback
             )
-            # Resetăm modelul Full cached
+            # Reset cached Full model
             state.full_model = None
             
         state.current_progress = {"status": "completed", "progress_pct": 100}
@@ -108,7 +118,7 @@ def run_training_thread(method: str, params: dict):
     except Exception as e:
         import traceback
         error_msg = str(e)
-        print(f"Eroare în timpul antrenamentului: {error_msg}")
+        print(f"Training error: {error_msg}")
         traceback.print_exc()
         state.current_progress = {"status": "failed", "error": error_msg}
         broadcaster.broadcast({"type": "status", "status": "failed", "method": method, "error": error_msg})
@@ -134,18 +144,18 @@ def get_config():
 @app.post("/api/config")
 def update_config(new_config: ConfigModel):
     if state.is_training:
-        raise HTTPException(status_code=400, detail="Nu se poate modifica configurația în timpul antrenamentului.")
+        raise HTTPException(status_code=400, detail="Cannot update configuration while training is in progress.")
     state.config = new_config.dict()
     return {"status": "success", "config": state.config}
 
 @app.post("/api/train/{method}")
 def start_train(method: str, background_tasks: BackgroundTasks):
     if method not in ["lora", "full"]:
-        raise HTTPException(status_code=400, detail="Metodă invalidă. Alege 'lora' sau 'full'.")
+        raise HTTPException(status_code=400, detail="Invalid method. Choose 'lora' or 'full'.")
     if state.is_training:
-        raise HTTPException(status_code=400, detail="Un antrenament este deja în desfășurare.")
+        raise HTTPException(status_code=400, detail="A training session is already running.")
     
-    # Pornim antrenamentul într-un thread separat pentru a nu bloca bucla de evenimente FastAPI
+    # Start training in a separate thread so the FastAPI event loop is not blocked
     t = threading.Thread(target=run_training_thread, args=(method, state.config))
     t.start()
     return {"status": "started", "method": method}
@@ -164,7 +174,7 @@ def stream_progress():
     def event_generator():
         while True:
             try:
-                # Așteptăm date din coadă (cu timeout pentru a detecta deconectarea clientului)
+                # Wait for queue data (with timeout to detect client disconnect)
                 data = q.get(timeout=2.0)
                 yield f"data: {json.dumps(data)}\n\n"
             except queue.Empty:
@@ -189,47 +199,47 @@ def get_metrics():
 class PredictionRequest(BaseModel):
     text: str
 
-def get_sentiment_prediction(model, tokenizer, text, device):
-    """Calculează probabilitățile pentru 'positive' și 'negative' folosind T5."""
+def get_emotion_prediction(model, tokenizer, text, device):
+    """Compute probabilities for all labels in `LABEL_NAMES` using T5."""
     model.eval()
     model.to(device)
-    
-    input_text = f"sentiment: {text}"
+
+    input_text = f"{TASK}: {text}"
     inputs = tokenizer(input_text, return_tensors="pt").to(device)
-    
-    # Prima etapă de decodare: verificăm probabilitățile primului token generat
+
+    # First decoding step: inspect logits for the first generated token
     decoder_input_ids = torch.tensor([[tokenizer.pad_token_id]]).to(device)
-    
+
     with torch.no_grad():
         outputs = model(**inputs, decoder_input_ids=decoder_input_ids)
         logits = outputs.logits[0, 0, :]  # Shape: (vocab_size,)
-        
-        # Token ID-urile pentru "positive" și "negative" în Flan-T5
-        pos_token_id = tokenizer.encode("positive")[0]
-        neg_token_id = tokenizer.encode("negative")[0]
-        
-        pos_logit = logits[pos_token_id].item()
-        neg_logit = logits[neg_token_id].item()
-        
-        # Softmax local
-        max_logit = max(pos_logit, neg_logit)
-        exp_pos = torch.exp(torch.tensor(pos_logit - max_logit)).item()
-        exp_neg = torch.exp(torch.tensor(neg_logit - max_logit)).item()
-        sum_exp = exp_pos + exp_neg
-        
-        prob_pos = exp_pos / sum_exp
-        prob_neg = exp_neg / sum_exp
-        
-        label = "positive" if prob_pos > prob_neg else "negative"
-        confidence = prob_pos if label == "positive" else prob_neg
-        
-        return label, round(confidence, 4)
+
+        label_token_ids = []
+        for label in LABEL_NAMES:
+            token_ids = tokenizer(label, add_special_tokens=False).input_ids
+            if len(token_ids) != 1:
+                raise ValueError(f"Expected single-token label for '{label}', got {token_ids}")
+            label_token_ids.append(token_ids[0])
+
+        label_logits = logits[label_token_ids]
+        probs = torch.softmax(label_logits, dim=0)
+
+        top_idx = int(torch.argmax(probs).item())
+        label = LABEL_NAMES[top_idx]
+        confidence = float(probs[top_idx].item())
+        scores = {LABEL_NAMES[i]: round(float(probs[i].item()), 4) for i in range(len(LABEL_NAMES))}
+
+        return {
+            "label": label,
+            "confidence": round(confidence, 4),
+            "scores": scores
+        }
 
 @app.post("/api/predict")
 def predict(req: PredictionRequest):
     device = get_device()
     
-    # Încărcăm leneș (lazy) tokenizer-ul și modelul de bază
+    # Lazy load the tokenizer and base model
     if state.tokenizer is None:
         state.tokenizer = load_tokenizer()
     if state.base_model is None:
@@ -237,51 +247,51 @@ def predict(req: PredictionRequest):
     
     results = {}
     
-    # 1. Predicție Model de Bază (Netrăit)
+    # 1. Base model prediction (zero-shot)
     try:
-        base_label, base_conf = get_sentiment_prediction(state.base_model, state.tokenizer, req.text, device)
-        results["base"] = {"label": base_label, "confidence": base_conf, "available": True}
+        base_pred = get_emotion_prediction(state.base_model, state.tokenizer, req.text, device)
+        results["base"] = {"label": base_pred["label"], "confidence": base_pred["confidence"], "scores": base_pred["scores"], "available": True}
     except Exception as e:
         results["base"] = {"available": False, "error": str(e)}
         
-    # 2. Predicție Model LoRA (dacă adaptorul a fost antrenat)
+    # 2. LoRA model prediction (if trained)
     lora_path = os.path.join(OUTPUT_DIR, "lora", "lora_adapter")
     if os.path.exists(lora_path):
         try:
             if state.lora_model is None:
-                # Reîncărcăm modelul de bază curat pe CPU înainte de a aplica adaptori
+                # Reload clean base model on CPU before applying adapters
                 clean_base = AutoModelForSeq2SeqLM.from_pretrained(BASE_MODEL)
                 state.lora_model = PeftModel.from_pretrained(clean_base, lora_path)
             
-            lora_label, lora_conf = get_sentiment_prediction(state.lora_model, state.tokenizer, req.text, device)
-            results["lora"] = {"label": lora_label, "confidence": lora_conf, "available": True}
+            lora_pred = get_emotion_prediction(state.lora_model, state.tokenizer, req.text, device)
+            results["lora"] = {"label": lora_pred["label"], "confidence": lora_pred["confidence"], "scores": lora_pred["scores"], "available": True}
         except Exception as e:
             results["lora"] = {"available": False, "error": str(e)}
     else:
-        results["lora"] = {"available": False, "info": "Modelul LoRA nu a fost încă antrenat."}
+        results["lora"] = {"available": False, "info": "LoRA model has not been trained yet."}
         
-    # 3. Predicție Model Full Fine-Tuning (dacă modelul a fost antrenat)
+    # 3. Full Fine-Tuning model prediction (if trained)
     full_path = os.path.join(OUTPUT_DIR, "full", "full_model")
     if os.path.exists(full_path):
         try:
             if state.full_model is None:
                 state.full_model = AutoModelForSeq2SeqLM.from_pretrained(full_path)
-                
-            full_label, full_conf = get_sentiment_prediction(state.full_model, state.tokenizer, req.text, device)
-            results["full"] = {"label": full_label, "confidence": full_conf, "available": True}
+            
+            full_pred = get_emotion_prediction(state.full_model, state.tokenizer, req.text, device)
+            results["full"] = {"label": full_pred["label"], "confidence": full_pred["confidence"], "scores": full_pred["scores"], "available": True}
         except Exception as e:
             results["full"] = {"available": False, "error": str(e)}
     else:
-        results["full"] = {"available": False, "info": "Modelul Full FT nu a fost încă antrenat."}
+        results["full"] = {"available": False, "info": "Full FT model has not been trained yet."}
         
     return results
 
-# Creăm directorul pentru fișierele statice dacă nu există
+# Create the static directory if it does not exist
 os.makedirs("static", exist_ok=True)
 
-# Servirea frontend-ului static
+# Serve the frontend static files
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
-    print("Pornește serverul pe http://localhost:8000 ...")
+    print("Starting server on http://localhost:8000 ...")
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)

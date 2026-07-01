@@ -1,6 +1,6 @@
 """
-Antrenament Full Fine-Tuning (toți parametrii modelului).
-Metodă clasică, costisitoare computațional dar de referință.
+Full Fine-Tuning training (all model parameters).
+Classic reference method, computationally expensive.
 """
 
 import os
@@ -17,7 +17,7 @@ from metrics_tracker import (
     ExperimentMetrics, count_parameters, Timer,
     peak_ram_mb, peak_gpu_mb, checkpoint_size_mb,
 )
-from evaluate_model import evaluate_accuracy
+from evaluate_model import evaluate_detailed
 from config import (
     BASE_MODEL, OUTPUT_DIR, LOG_DIR,
     BATCH_SIZE, EVAL_BATCH_SIZE, NUM_EPOCHS, FULL_LR,
@@ -74,7 +74,7 @@ def train_full(
     tokenizer = load_tokenizer()
     train_ds, eval_ds, test_ds, test_raw = get_datasets(tokenizer, train_samples=train_samples)
 
-    print("\n[1/4] Încărcare model de bază...")
+    print("\n[1/4] Loading base model...")
     model = AutoModelForSeq2SeqLM.from_pretrained(BASE_MODEL)
 
     total, trainable = count_parameters(model)
@@ -85,12 +85,12 @@ def train_full(
         trainable_pct=round(100 * trainable / total, 4),
     )
     print(f"  Total parametri:      {total:,}")
-    print(f"  Parametri antrenați:  {trainable:,} ({metrics.trainable_pct:.1f}%)")
+    print(f"  Trainable parameters:  {trainable:,} ({metrics.trainable_pct:.1f}%)")
 
     out_dir = os.path.join(OUTPUT_DIR, "full")
     log_dir = os.path.join(LOG_DIR, "full")
 
-    # Setăm logging_steps pentru actualizări frecvente
+    # Set logging_steps for frequent updates
     logging_steps = max(1, (train_samples // batch_size) // 10)
 
     training_args = Seq2SeqTrainingArguments(
@@ -147,7 +147,7 @@ def train_full(
         callbacks=callbacks,
     )
 
-    print("\n[3/4] Antrenament Full Fine-Tuning...")
+    print("\n[3/4] Training Full Fine-Tuning...")
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
 
@@ -161,26 +161,35 @@ def train_full(
     metrics.eval_loss_history = loss_history["eval"]
     metrics.calculate_energy(device)
 
-    print("\n[4/4] Evaluare acuratețe pe test set...")
+    print("\n[4/4] Detailed evaluation on test set...")
     full_dir = os.path.join(out_dir, "full_model")
     model.save_pretrained(full_dir)
     tokenizer.save_pretrained(full_dir)
     metrics.checkpoint_size_mb = round(checkpoint_size_mb(full_dir), 2)
 
-    accuracy = evaluate_accuracy(model, tokenizer, test_ds, test_raw, device)
-    metrics.final_accuracy = round(accuracy, 4)
+    eval_res = evaluate_detailed(model, tokenizer, test_ds, test_raw, device)
+    metrics.final_accuracy = round(eval_res.get("accuracy", 0.0), 4)
+    metrics.final_macro_f1 = eval_res.get("macro_f1", 0.0)
+    metrics.per_class = eval_res.get("per_class", {})
+    metrics.confusion_matrix = eval_res.get("confusion_matrix", {})
 
     metrics.save(os.path.join(OUTPUT_DIR, "metrics_full.json"))
 
     print("\n" + "─" * 40)
-    print(f"  Timp antrenament:    {metrics.train_time_sec:.1f}s")
+    print(f"  Training time:       {metrics.train_time_sec:.1f}s")
     print(f"  RAM peak:            {metrics.peak_ram_mb:.0f} MB")
     print(f"  GPU peak:            {metrics.peak_gpu_mb:.0f} MB")
-    print(f"  Acuratețe test:      {metrics.final_accuracy:.4f}")
-    print(f"  Dimensiune model:    {metrics.checkpoint_size_mb:.1f} MB")
-    print(f"  Energie estimată:    {metrics.estimated_energy_kwh:.6f} kWh")
-    print(f"  Emisii CO2 estimate: {metrics.estimated_co2_g:.4f} g")
+    print(f"  Test accuracy:       {metrics.final_accuracy:.4f}")
+    print(f"  Macro F1:            {metrics.final_macro_f1:.4f}")
+    print(f"  Model size:          {metrics.checkpoint_size_mb:.1f} MB")
+    print(f"  Estimated energy:    {metrics.estimated_energy_kwh:.6f} kWh")
+    print(f"  Estimated CO2:       {metrics.estimated_co2_g:.4f} g")
     print("─" * 40)
+
+    # Display per-class F1
+    print("\nPer-class F1:")
+    for label, vals in metrics.per_class.items():
+        print(f"  {label:8s}  F1={vals['f1']:.4f}  P={vals['precision']:.4f}  R={vals['recall']:.4f}")
 
     return metrics
 

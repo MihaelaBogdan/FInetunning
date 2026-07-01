@@ -1,20 +1,26 @@
 """
-Configurare centrală pentru experimentul LoRA vs Full Fine-Tuning.
-Modifică parametrii aici pentru a adapta experimentul.
+Central configuration for the LoRA vs Full Fine-Tuning experiment.
+Edit these values to adjust the experiment.
 """
 
 # ─── Model ───────────────────────────────────────────────────────────────────
-# Model mic open-source, rulează bine și pe CPU/MPS
-BASE_MODEL = "google/flan-t5-small"   # ~80M parametri
-# Alternative: "google/flan-t5-base" (250M), "facebook/opt-125m"
+# Small open-source model, runs well on CPU/MPS
+BASE_MODEL = "google/flan-t5-small"   # ~80M parameters
+# Alternatives: "google/flan-t5-base" (250M), "facebook/opt-125m"
 
 # ─── Dataset ─────────────────────────────────────────────────────────────────
-# Sarcină: clasificare sentiment (SST-2) — binar, simplu de evaluat
-DATASET_NAME = "nyu-mll/glue"
-DATASET_CONFIG = "sst2"
-TASK = "sentiment"                    # "sentiment" | "summarization"
+# Task: emotion classification (dair-ai/emotion) — multiclass text→text
+DATASET_NAME = "dair-ai/emotion"
+DATASET_CONFIG = "split"
+TASK = "emotion"                       # "sentiment" | "emotion" | "summarization"
+TEXT_COLUMN = "text"                   # SST-2 used "sentence", this dataset uses "text"
 
-# ─── Antrenament comun ───────────────────────────────────────────────────────
+# Labels, in dataset index order (0→5)
+LABEL_NAMES = ["sadness", "joy", "love", "anger", "fear", "surprise"]
+# For quick fallback to sentiment, keep the old label list commented out:
+# LABEL_NAMES = ["negative", "positive"]
+
+# ─── Shared training settings ────────────────────────────────────────────────
 MAX_INPUT_LENGTH = 128
 MAX_TARGET_LENGTH = 8
 TRAIN_SAMPLES = 200                  # subset redus pentru validare rapidă (implicit)

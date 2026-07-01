@@ -147,7 +147,7 @@ body {
     min-height: 0; /* Important pentru flex-scroll */
 }
 
-/* Navigație */
+/* Navigation */
 .app-nav {
     display: flex;
     flex-direction: column;
@@ -186,7 +186,7 @@ body {
     font-size: 1.15rem;
 }
 
-/* Conținut Principal */
+/* Main Content */
 .app-content {
     background: var(--bg-card);
     backdrop-filter: blur(16px);
@@ -525,6 +525,17 @@ body {
     height: 250px;
     position: relative;
     width: 100%;
+}
+
+.emotion-chart-container {
+    min-height: 340px;
+}
+
+.emotion-chart-legend {
+    margin-top: 14px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 /* ─── TAB 2: ANALYTICS ─── */
