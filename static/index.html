@@ -23,12 +23,7 @@
                 <i class="fa-solid fa-microchip-ai logo-icon"></i>
                 <div class="header-titles">
                     <h1>LoRA vs Full Fine-Tuning</h1>
-                    <p>Comparative study of energy efficiency and model performance for LLM fine-tuning.</p>
                 </div>
-            </div>
-            <div class="system-status" id="system-status">
-                <span class="status-dot green"></span>
-                <span class="status-text">System Ready</span>
             </div>
         </header>
 
@@ -167,37 +162,52 @@
                         <div class="card-header">
                             <i class="fa-solid fa-calculator text-yellow"></i>
                             <h2>Training Estimate</h2>
-                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">actualizat automat cu configurația curentă</span>
+                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">updated automatically with the current configuration</span>
                         </div>
                         <div class="estimate-grid">
                             <div class="estimate-stat">
-                                <div class="estimate-label">Pași / Epocă</div>
+                                <div class="estimate-label">Steps / Epoch</div>
                                 <div class="estimate-value" id="est-steps-epoch">—</div>
                             </div>
                             <div class="estimate-stat">
-                                <div class="estimate-label">Total pași</div>
+                                <div class="estimate-label">Total Steps</div>
                                 <div class="estimate-value" id="est-steps-total">—</div>
                             </div>
                             <div class="estimate-stat">
-                                <div class="estimate-label">Timp estimat LoRA</div>
+                                <div class="estimate-label">Estimated LoRA Time</div>
                                 <div class="estimate-value text-blue" id="est-time-lora">—</div>
                             </div>
                             <div class="estimate-stat">
-                                <div class="estimate-label">Timp estimat Full FT</div>
+                                <div class="estimate-label">Estimated Full FT Time</div>
                                 <div class="estimate-value text-red" id="est-time-full">—</div>
                             </div>
                             <div class="estimate-stat">
-                                <div class="estimate-label">Param. antrenați LoRA</div>
+                                <div class="estimate-label">LoRA Trainable Params</div>
                                 <div class="estimate-value text-blue" id="est-params-lora">~344K <span style="font-size:0.7rem;color:var(--text-muted)">(0.45%)</span></div>
                             </div>
                             <div class="estimate-stat">
-                                <div class="estimate-label">Param. antrenați Full FT</div>
+                                <div class="estimate-label">Full FT Trainable Params</div>
                                 <div class="estimate-value text-red" id="est-params-full">~77M <span style="font-size:0.7rem;color:var(--text-muted)">(100%)</span></div>
                             </div>
                         </div>
                         <div id="est-warning" class="estimate-warning hidden">
                             <i class="fa-solid fa-triangle-exclamation"></i>
                             <span id="est-warning-text"></span>
+                        </div>
+                    </div>
+
+                    <!-- LR Scheduler Preview -->
+                    <div class="card glass-card margin-top">
+                        <div class="card-header">
+                            <i class="fa-solid fa-wave-square text-yellow"></i>
+                            <h2>Learning Rate Scheduler Preview</h2>
+                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">warmup linear → cosine decay</span>
+                        </div>
+                        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.8rem">
+                            The actual learning rate the model sees at each step — too high causes instability, too low causes slow convergence.
+                        </p>
+                        <div class="chart-container-large" style="height:200px">
+                            <canvas id="lrSchedulerChart"></canvas>
                         </div>
                     </div>
 
@@ -302,10 +312,49 @@
                                         <strong class="text-green" id="green-co2-saved">- g CO2</strong>
                                     </div>
                                 </div>
-                                <div class="green-explanation">
-                                    <h3>Why it matters</h3>
-                                    <p>Full Fine-Tuning updates all model parameters, which increases compute and energy usage. LoRA (Low-Rank Adaptation) freezes most of the model and trains a much smaller adapter, greatly reducing training time and energy consumption.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Auto Conclusions -->
+                    <div class="card glass-card margin-top" id="auto-conclusions-card" style="display:none">
+                        <div class="card-header">
+                            <i class="fa-solid fa-lightbulb text-yellow"></i>
+                            <h2>Automatic Interpretation</h2>
+                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">generated from experiment results</span>
+                        </div>
+                        <div id="conclusions-body" class="conclusions-grid"></div>
+                    </div>
+
+                    <!-- Catastrophic Forgetting Check -->
+                    <div class="card glass-card margin-top" id="forgetting-card">
+                        <div class="card-header">
+                            <i class="fa-solid fa-brain text-red"></i>
+                            <h2>Catastrophic Forgetting Check</h2>
+                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">Common pitfall — "Common Pitfalls" slide</span>
+                        </div>
+                        <button class="btn btn-secondary" id="run-forgetting-test-btn">
+                            <i class="fa-solid fa-flask"></i> Run Regression Test
+                        </button>
+                        <div id="forgetting-results" class="hidden margin-top">
+                            <div class="estimate-grid" style="margin-bottom:1rem">
+                                <div class="estimate-stat">
+                                    <div class="estimate-label">Base Model Coherent</div>
+                                    <div class="estimate-value" id="forget-base-score">—</div>
                                 </div>
+                                <div class="estimate-stat">
+                                    <div class="estimate-label">LoRA Coherent</div>
+                                    <div class="estimate-value text-blue" id="forget-lora-score">—</div>
+                                </div>
+                                <div class="estimate-stat">
+                                    <div class="estimate-label">Full FT Coherent</div>
+                                    <div class="estimate-value text-red" id="forget-full-score">—</div>
+                                </div>
+                            </div>
+                            <div id="forgetting-table" class="forgetting-table"></div>
+                            <div id="forgetting-verdict" class="estimate-warning hidden margin-top">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <span id="forgetting-verdict-text"></span>
                             </div>
                         </div>
                     </div>
@@ -318,8 +367,6 @@
                             <i class="fa-solid fa-pen-fancy text-blue"></i>
                             <h2>Comparative Inference Playground</h2>
                         </div>
-                        <p class="playground-intro">Enter a sentence to run comparative inference on the base, LoRA, and Full FT models. The predictions will show how each model behaves on the same input.</p>
-                        
                         <div class="playground-input-sec">
                             <textarea id="playground-text" placeholder="Example: The movie was absolutely fantastic! The acting was superb and the plot kept me on the edge of my seat..."></textarea>
                             <button class="btn btn-primary" id="predict-btn">
@@ -478,10 +525,10 @@
                     <div class="card glass-card margin-top">
                         <div class="card-header">
                             <i class="fa-solid fa-arrows-left-right text-purple"></i>
-                            <h3>Distribuție Labeluri — Train vs Val vs Test</h3>
+                            <h3>Label Distribution — Train vs Val vs Test</h3>
                         </div>
                         <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.8rem">
-                            Verifică dacă split-urile au aceeași distribuție — o neconcordanță umflă sau scade artificial metricile de evaluare.
+                            Check whether the splits share the same distribution — a mismatch artificially inflates or deflates evaluation metrics.
                         </p>
                         <div class="chart-container-large">
                             <canvas id="ds-split-compare-chart"></canvas>
@@ -495,15 +542,15 @@
                             <h3>Duplicate &amp; Data Leakage Detector</h3>
                         </div>
                         <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 1rem">
-                            Duplicate în train umflă loss-ul; leak între train și val/test umflă acuratețea — ambele îți mint metricile.
+                            Duplicates in train inflate the loss; leakage between train and val/test inflates accuracy — both lie to your metrics.
                         </p>
                         <div id="ds-dup-loading" style="color:var(--text-muted);font-size:0.85rem">
-                            <i class="fa-solid fa-spinner fa-spin"></i> Analiză duplicate…
+                            <i class="fa-solid fa-spinner fa-spin"></i> Analyzing duplicates…
                         </div>
                         <div id="ds-dup-content" class="hidden">
                             <div class="estimate-grid">
                                 <div class="estimate-stat">
-                                    <div class="estimate-label">Duplicate în Train</div>
+                                    <div class="estimate-label">Duplicates in Train</div>
                                     <div class="estimate-value" id="ds-dup-train">—</div>
                                 </div>
                                 <div class="estimate-stat">
@@ -521,7 +568,7 @@
                             </div>
                             <div id="ds-dup-ok" class="estimate-warning hidden" style="margin-top:1rem;background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.25);color:#10b981">
                                 <i class="fa-solid fa-circle-check"></i>
-                                <span>Dataset curat — fără duplicate și fără leak între split-uri.</span>
+                                <span>Clean dataset — no duplicates and no leakage between splits.</span>
                             </div>
                         </div>
                     </div>

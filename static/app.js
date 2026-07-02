@@ -94,6 +94,8 @@ async function loadConfig() {
         document.getElementById('lora_alpha').value = config.lora_alpha;
         
         writeToConsole("[System] Current configuration loaded successfully.");
+        updateTrainingEstimate();
+        updateLRSchedulerChart();
     } catch (err) {
         writeToConsole("[Error] Failed to load configuration: " + err.message, "error");
     }
@@ -176,20 +178,20 @@ function setTrainingUI(isTraining, method = null) {
         fullBtn.disabled = true;
         saveBtn.disabled = true;
         progressSec.classList.remove('hidden');
-        
+
         const methodTitle = method === 'lora' ? 'LoRA Fine-Tuning' : 'Full Fine-Tuning';
         document.getElementById('progress-title').innerText = `Training ${methodTitle} in progress...`;
-        
-        statusText.innerText = `Training ${method === 'lora' ? 'LoRA' : 'Full FT'}...`;
-        statusDot.className = `status-dot pulsing-${method === 'lora' ? 'blue' : 'red'}`;
+
+        if (statusText) statusText.innerText = `Training ${method === 'lora' ? 'LoRA' : 'Full FT'}...`;
+        if (statusDot) statusDot.className = `status-dot pulsing-${method === 'lora' ? 'blue' : 'red'}`;
     } else {
         loraBtn.disabled = false;
         fullBtn.disabled = false;
         saveBtn.disabled = false;
         progressSec.classList.add('hidden');
-        
-        statusText.innerText = "System Ready";
-        statusDot.className = "status-dot green";
+
+        if (statusText) statusText.innerText = "System Ready";
+        if (statusDot) statusDot.className = "status-dot green";
     }
 }
 
@@ -249,6 +251,9 @@ function setupSSE() {
             if (msg.data.loss !== null) {
                 addLiveLossPoint(msg.method, msg.data.step, msg.data.loss);
             }
+            if (msg.data.eval_loss !== null && msg.data.eval_loss !== undefined) {
+                addLiveEvalLossPoint(msg.method, msg.data.step, msg.data.eval_loss);
+            }
         }
     };
     
@@ -272,31 +277,159 @@ function writeToConsole(text, type = "") {
 }
 
 // ─── LIVE LOSS CHART (CHART.JS) ───
+// ─── LR SCHEDULER PREVIEW ───
+// Slide 21: "Learning rate — the most important setting"
+let lrSchedulerChart = null;
+const WARMUP_RATIO_UI = 0.1; // matches config.py WARMUP_RATIO
+
+function computeLRSchedule(peakLR, totalSteps) {
+    const warmupSteps = Math.max(1, Math.round(totalSteps * WARMUP_RATIO_UI));
+    const points = [];
+    const n = Math.max(totalSteps, 2);
+    const step = Math.max(1, Math.round(n / 60)); // ~60 points for a smooth curve
+
+    for (let s = 0; s <= n; s += step) {
+        let lr;
+        if (s < warmupSteps) {
+            lr = peakLR * (s / warmupSteps);
+        } else {
+            const progress = (s - warmupSteps) / Math.max(1, (n - warmupSteps));
+            lr = peakLR * 0.5 * (1 + Math.cos(Math.PI * progress));
+        }
+        points.push({ x: s, y: lr });
+    }
+    return points;
+}
+
+function initLRSchedulerChart() {
+    const canvas = document.getElementById('lrSchedulerChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    lrSchedulerChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [
+                {
+                    label: 'LoRA LR',
+                    data: [],
+                    borderColor: colors.lora,
+                    backgroundColor: colors.loraGlow,
+                    borderWidth: 2,
+                    tension: 0.15,
+                    pointRadius: 0,
+                    fill: true
+                },
+                {
+                    label: 'Full FT LR',
+                    data: [],
+                    borderColor: colors.full,
+                    backgroundColor: colors.fullGlow,
+                    borderWidth: 2,
+                    tension: 0.15,
+                    pointRadius: 0,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: { display: true, text: 'Training Steps', color: colors.text },
+                    grid: { color: colors.grid },
+                    ticks: { color: colors.text }
+                },
+                y: {
+                    title: { display: true, text: 'Learning Rate', color: colors.text },
+                    grid: { color: colors.grid },
+                    ticks: {
+                        color: colors.text,
+                        callback: v => v.toExponential(0)
+                    }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: colors.text } },
+                tooltip: {
+                    callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toExponential(3)}` }
+                }
+            }
+        }
+    });
+    updateLRSchedulerChart();
+}
+
+function updateLRSchedulerChart() {
+    if (!lrSchedulerChart) return;
+
+    const samples = parseInt(document.getElementById('train_samples')?.value) || 200;
+    const epochs  = parseInt(document.getElementById('epochs')?.value) || 1;
+    const batch   = parseInt(document.getElementById('batch_size')?.value) || 8;
+    const lrLora  = parseFloat(document.getElementById('learning_rate_lora')?.value) || 3e-4;
+    const lrFull  = parseFloat(document.getElementById('learning_rate_full')?.value) || 5e-5;
+
+    const totalSteps = Math.max(2, Math.ceil(samples / batch) * epochs);
+
+    lrSchedulerChart.data.datasets[0].data = computeLRSchedule(lrLora, totalSteps);
+    lrSchedulerChart.data.datasets[1].data = computeLRSchedule(lrFull, totalSteps);
+    lrSchedulerChart.update('none');
+}
+
 function initLiveLossChart() {
     const ctx = document.getElementById('liveLossChart').getContext('2d');
     liveLossChart = new Chart(ctx, {
         type: 'line',
         data: {
             datasets: [
+                // idx 0: LoRA train loss
                 {
-                    label: 'LoRA Loss',
+                    label: 'LoRA Train Loss',
                     data: [],
                     borderColor: colors.lora,
                     backgroundColor: colors.loraGlow,
                     borderWidth: 2,
-                    tension: 0.2,
+                    tension: 0.3,
                     pointRadius: 2,
-                    fill: true
+                    fill: false
                 },
+                // idx 1: Full FT train loss
                 {
-                    label: 'Full FT Loss',
+                    label: 'Full FT Train Loss',
                     data: [],
                     borderColor: colors.full,
                     backgroundColor: colors.fullGlow,
                     borderWidth: 2,
-                    tension: 0.2,
+                    tension: 0.3,
                     pointRadius: 2,
-                    fill: true
+                    fill: false
+                },
+                // idx 2: LoRA eval loss (dashed)
+                {
+                    label: 'LoRA Eval Loss',
+                    data: [],
+                    borderColor: colors.lora,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [6, 3],
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointStyle: 'circle',
+                    fill: false
+                },
+                // idx 3: Full FT eval loss (dashed)
+                {
+                    label: 'Full FT Eval Loss',
+                    data: [],
+                    borderColor: colors.full,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [6, 3],
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointStyle: 'circle',
+                    fill: false
                 }
             ]
         },
@@ -317,7 +450,22 @@ function initLiveLossChart() {
                 }
             },
             plugins: {
-                legend: { labels: { color: colors.text } }
+                legend: {
+                    labels: {
+                        color: colors.text,
+                        generateLabels: (chart) => {
+                            const defaults = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                            defaults[2].lineDash = [6, 3];
+                            defaults[3].lineDash = [6, 3];
+                            return defaults;
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}`
+                    }
+                }
             }
         }
     });
@@ -394,19 +542,74 @@ function updateEmotionScoreChart(scoreData) {
 }
 
 function resetLiveChartForMethod(method) {
-    const datasetIndex = method === 'lora' ? 0 : 1;
-    liveLossChart.data.datasets[datasetIndex].data = [];
+    const trainIdx = method === 'lora' ? 0 : 1;
+    const evalIdx = method === 'lora' ? 2 : 3;
+    liveLossChart.data.datasets[trainIdx].data = [];
+    liveLossChart.data.datasets[evalIdx].data = [];
     liveLossChart.update();
+    hideOverfitWarning();
 }
 
 function addLiveLossPoint(method, step, loss) {
     const datasetIndex = method === 'lora' ? 0 : 1;
     liveLossChart.data.datasets[datasetIndex].data.push({ x: step, y: loss });
-    
+
     // Sort by step to keep the chart data ordered
     liveLossChart.data.datasets[datasetIndex].data.sort((a, b) => a.x - b.x);
-    
+
     liveLossChart.update('none'); // Update silently without animation for speed
+}
+
+function addLiveEvalLossPoint(method, step, evalLoss) {
+    const evalIdx = method === 'lora' ? 2 : 3;
+    liveLossChart.data.datasets[evalIdx].data.push({ x: step, y: evalLoss });
+    liveLossChart.data.datasets[evalIdx].data.sort((a, b) => a.x - b.x);
+    liveLossChart.update('none');
+    checkOverfitting(method);
+}
+
+// ─── OVERFITTING DETECTOR ───
+// Slide 23: "Overfitting — the model memorizes instead of generalizing"
+function checkOverfitting(method) {
+    const trainIdx = method === 'lora' ? 0 : 1;
+    const evalIdx = method === 'lora' ? 2 : 3;
+    const trainData = liveLossChart.data.datasets[trainIdx].data;
+    const evalData = liveLossChart.data.datasets[evalIdx].data;
+
+    if (evalData.length < 2) return;
+
+    const lastEval = evalData[evalData.length - 1].y;
+    const prevEval = evalData[evalData.length - 2].y;
+    const lastTrain = trainData.length ? trainData[trainData.length - 1].y : null;
+
+    const evalRising = lastEval > prevEval;
+    const gapWidening = lastTrain !== null && (lastEval - lastTrain) > 0.3;
+
+    if (evalRising || gapWidening) {
+        showOverfitWarning(method, evalRising, gapWidening);
+    }
+}
+
+function showOverfitWarning(method, evalRising, gapWidening) {
+    let box = document.getElementById('overfit-warning-box');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'overfit-warning-box';
+        box.className = 'estimate-warning margin-top';
+        document.getElementById('liveLossChart').closest('.card').appendChild(box);
+    }
+    const methodLabel = method === 'lora' ? 'LoRA' : 'Full FT';
+    const reason = evalRising
+        ? 'eval loss is rising compared to the previous step'
+        : 'eval loss is diverging significantly from train loss';
+    box.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>
+        <span><strong>${methodLabel}: possible overfitting</strong> — ${reason}. The model is starting to memorize the training data instead of generalizing (see "Common Pitfalls" slide). Consider fewer epochs or early stopping.</span>`;
+    box.classList.remove('hidden');
+}
+
+function hideOverfitWarning() {
+    const box = document.getElementById('overfit-warning-box');
+    if (box) box.classList.add('hidden');
 }
 
 // ─── TAB 2: ANALYTICS & GREEN AI ───
@@ -452,7 +655,7 @@ async function loadAnalytics() {
         document.getElementById('green-energy-full').innerText = `${metrics.full.estimated_energy_kwh.toFixed(6)} kWh`;
         
         const efficiencyRatio = (metrics.full.estimated_energy_kwh / metrics.lora.estimated_energy_kwh).toFixed(1);
-        document.getElementById('green-efficiency-ratio').innerText = `de ${efficiencyRatio} ori mai eficient`;
+        document.getElementById('green-efficiency-ratio').innerText = `${efficiencyRatio}x more efficient`;
         
         document.getElementById('green-co2-lora').innerText = `${metrics.lora.estimated_co2_g.toFixed(4)} g`;
         document.getElementById('green-co2-full').innerText = `${metrics.full.estimated_co2_g.toFixed(4)} g`;
@@ -854,9 +1057,9 @@ function updateTrainingEstimate() {
     const warn = document.getElementById('est-warning');
     const warnText = document.getElementById('est-warning-text');
     const messages = [];
-    if (epochs > 3) messages.push(`${epochs} epoci — risc de supraînvățare (recomandat ≤3).`);
-    if (samples < 100) messages.push(`Doar ${samples} exemple — prea puține pentru generalizare.`);
-    if (batch > samples / 2) messages.push(`Batch size (${batch}) foarte mare față de dataset (${samples} exemple).`);
+    if (epochs > 3) messages.push(`${epochs} epochs — risk of overfitting (recommended ≤3).`);
+    if (samples < 100) messages.push(`Only ${samples} examples — too few for generalization.`);
+    if (batch > samples / 2) messages.push(`Batch size (${batch}) is very large relative to the dataset (${samples} examples).`);
 
     if (messages.length > 0) {
         warnText.textContent = messages.join(' ');
@@ -868,11 +1071,15 @@ function updateTrainingEstimate() {
 
 // Hook into config inputs
 document.addEventListener('DOMContentLoaded', () => {
-    ['train_samples', 'epochs', 'batch_size'].forEach(id => {
+    ['train_samples', 'epochs', 'batch_size', 'learning_rate_lora', 'learning_rate_full'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', updateTrainingEstimate);
+        if (el) el.addEventListener('input', () => {
+            updateTrainingEstimate();
+            updateLRSchedulerChart();
+        });
     });
     updateTrainingEstimate();
+    initLRSchedulerChart();
 });
 
 // ─── TRUNCATION ANALYSIS ─────────────────────────────────────────────────────
@@ -905,10 +1112,10 @@ function renderTruncationStats(data) {
     const warn = document.getElementById('ds-trunc-warn');
     const warnText = document.getElementById('ds-trunc-warn-text');
     if (data.truncated_pct > 20) {
-        warnText.textContent = `${data.truncated_pct}% din exemple sunt trunchiare — crește MAX_INPUT_LENGTH în config.py (actual: ${data.max_input_length}). Max detectat: ${data.max_tokens} tokeni.`;
+        warnText.textContent = `${data.truncated_pct}% of examples are truncated — increase MAX_INPUT_LENGTH in config.py (current: ${data.max_input_length}). Max detected: ${data.max_tokens} tokens.`;
         warn.classList.remove('hidden');
     } else if (data.truncated_pct > 5) {
-        warnText.textContent = `${data.truncated_pct}% trunchiare — acceptabil, dar verifică exemplele lungi (max ${data.max_tokens} tok).`;
+        warnText.textContent = `${data.truncated_pct}% truncation — acceptable, but check the longer examples (max ${data.max_tokens} tok).`;
         warn.classList.remove('hidden');
         warn.style.background = 'rgba(16, 185, 129, 0.08)';
         warn.style.borderColor = 'rgba(16, 185, 129, 0.25)';
@@ -967,7 +1174,7 @@ function renderTruncationStats(data) {
                             borderDash: [4, 4],
                             label: {
                                 display: true,
-                                content: `Limită ${data.max_input_length} tok`,
+                                content: `Limit ${data.max_input_length} tok`,
                                 color: '#f59e0b',
                                 font: { size: 11 },
                                 position: 'start'
@@ -1035,16 +1242,110 @@ function renderDuplicateStats(data) {
     // Warning or OK banner
     const issues = [];
     if (data.dup_in_train > 0)
-        issues.push(`${data.dup_in_train} duplicate în train (${dupPct}%) — antrenamentul va suprainvăța aceste exemple.`);
+        issues.push(`${data.dup_in_train} duplicates in train (${dupPct}%) — training will overfit on these examples.`);
     if (leakVal > 0)
-        issues.push(`${leakVal} exemple din train apar și în validation — acuratețea de evaluare este umflată artificial.`);
+        issues.push(`${leakVal} examples from train also appear in validation — evaluation accuracy is artificially inflated.`);
     if (leakTest > 0)
-        issues.push(`${leakTest} exemple din train apar și în test — metricile finale nu sunt de încredere.`);
+        issues.push(`${leakTest} examples from train also appear in test — final metrics are not trustworthy.`);
 
     if (issues.length > 0) {
         document.getElementById('ds-dup-warn-text').textContent = issues.join(' ');
         document.getElementById('ds-dup-warn').classList.remove('hidden');
     } else {
         document.getElementById('ds-dup-ok').classList.remove('hidden');
+    }
+}
+
+// ─── CATASTROPHIC FORGETTING TEST ────────────────────────────────────────────
+// Slide 23: "Catastrophic forgetting — aggressive updates erase general abilities"
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('run-forgetting-test-btn');
+    if (btn) btn.addEventListener('click', runForgettingTest);
+});
+
+async function runForgettingTest() {
+    const btn = document.getElementById('run-forgetting-test-btn');
+    const resultsBox = document.getElementById('forgetting-results');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running on all 3 models…';
+
+    try {
+        const res = await fetch(`${API_BASE}/api/forgetting-test`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderForgettingTest(data);
+        resultsBox.classList.remove('hidden');
+    } catch (e) {
+        alert('Test failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-flask"></i> Run Regression Test';
+    }
+}
+
+function renderForgettingTest(data) {
+    const modelLabels = { base: 'Base', lora: 'LoRA', full: 'Full FT' };
+    const scoreEls = { base: 'forget-base-score', lora: 'forget-lora-score', full: 'forget-full-score' };
+
+    ['base', 'lora', 'full'].forEach(key => {
+        const el = document.getElementById(scoreEls[key]);
+        if (data.scores[key] !== undefined) {
+            el.textContent = `${data.scores[key]}%`;
+            el.style.color = data.scores[key] >= 80 ? '#10b981' : data.scores[key] >= 40 ? '#f59e0b' : '#ff455b';
+        } else {
+            el.textContent = 'N/A';
+            el.style.color = 'var(--text-muted)';
+        }
+    });
+
+    // Table of prompts x answers
+    const table = document.getElementById('forgetting-table');
+    table.innerHTML = '';
+    const normalize = t => (t || '').trim().toLowerCase().replace(/[.!?]+$/, '');
+
+    data.prompts.forEach(row => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'forgetting-row';
+
+        const texts = Object.values(row.answers).map(a => normalize(a.text));
+        const allSame = texts.every(t => t === texts[0]);
+
+        const answersHtml = Object.entries(row.answers).map(([key, a]) => `
+            <div class="forgetting-answer ${a.coherent ? 'coherent' : 'incoherent'}">
+                <span class="fa-name">${modelLabels[key] || key}</span>
+                ${a.text || '(empty)'}
+            </div>
+        `).join('');
+
+        const diffBadge = allSame
+            ? `<span class="forgetting-diff-badge same">MATCH</span>`
+            : `<span class="forgetting-diff-badge diff">DIFFER — models produced different answers</span>`;
+
+        rowEl.innerHTML = `
+            <div class="forgetting-prompt-row">
+                <div class="forgetting-prompt">"${row.prompt}"</div>
+                ${diffBadge}
+            </div>
+            <div class="forgetting-answers">${answersHtml}</div>
+        `;
+        table.appendChild(rowEl);
+    });
+
+    // Verdict
+    const verdict = document.getElementById('forgetting-verdict');
+    const verdictText = document.getElementById('forgetting-verdict-text');
+    const issues = [];
+    if (data.scores.lora !== undefined && data.scores.base !== undefined && data.scores.lora < data.scores.base - 20) {
+        issues.push(`LoRA lost ${(data.scores.base - data.scores.lora).toFixed(0)}% of its general coherence compared to Base.`);
+    }
+    if (data.scores.full !== undefined && data.scores.base !== undefined && data.scores.full < data.scores.base - 20) {
+        issues.push(`Full FT lost ${(data.scores.base - data.scores.full).toFixed(0)}% of its general coherence compared to Base — a typical sign of catastrophic forgetting.`);
+    }
+    if (issues.length > 0) {
+        verdictText.textContent = issues.join(' ') + ' The model responds with emotion labels even for questions unrelated to the task.';
+        verdict.classList.remove('hidden');
+    } else {
+        verdict.classList.add('hidden');
     }
 }

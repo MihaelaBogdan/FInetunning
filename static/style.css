@@ -1003,3 +1003,124 @@ body {
     color: #f59e0b;
     font-size: 0.85rem;
 }
+
+/* ─── CONCLUSIONS CARD ─── */
+.conclusions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.9rem;
+    margin-top: 0.5rem;
+}
+.conclusion-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+}
+.conclusion-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+}
+.conclusion-text strong {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    margin-bottom: 0.2rem;
+}
+.conclusion-text span {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* ─── FORGETTING TEST ─── */
+.btn-secondary {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+.btn-secondary:hover {
+    background: rgba(255,255,255,0.1);
+    transform: translateY(-2px);
+}
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.forgetting-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.forgetting-row {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+}
+.forgetting-prompt {
+    font-size: 0.85rem;
+    color: var(--text-main);
+    margin-bottom: 0.6rem;
+    font-style: italic;
+}
+.forgetting-answers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.6rem;
+}
+.forgetting-answer {
+    font-size: 0.78rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.03);
+}
+.forgetting-answer .fa-name {
+    display: block;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+}
+.forgetting-answer.coherent { border-left: 3px solid #10b981; }
+.forgetting-answer.incoherent { border-left: 3px solid #ff455b; }
+
+.forgetting-prompt-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+}
+.forgetting-prompt-row .forgetting-prompt {
+    margin-bottom: 0;
+    flex: 1;
+}
+.forgetting-diff-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.forgetting-diff-badge.same {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.forgetting-diff-badge.diff {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
