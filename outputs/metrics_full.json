@@ -3,8 +3,8 @@
   "total_params": 76961152,
   "trainable_params": 76961152,
   "trainable_pct": 100.0,
-  "train_time_sec": 17.38,
-  "peak_ram_mb": 1076.28,
+  "train_time_sec": 12.73,
+  "peak_ram_mb": 1180.34,
   "peak_gpu_mb": 0.0,
   "train_loss_history": [
     1.4955
@@ -95,6 +95,6 @@
     }
   },
   "checkpoint_size_mb": 295.92,
-  "estimated_energy_kwh": 0.000145,
-  "estimated_co2_g": 0.0435
+  "estimated_energy_kwh": 0.000106,
+  "estimated_co2_g": 0.0318
 }

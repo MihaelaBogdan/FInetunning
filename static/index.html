@@ -70,7 +70,10 @@
                                     <input type="number" id="train_samples" name="train_samples" min="10" max="10000" step="50">
                                 </div>
                                 <div class="form-group">
-                                    <label for="epochs">Epochs</label>
+                                    <label for="epochs">
+                                        LoRA Epochs
+                                        <span class="tooltip" title="Number of passes over the training data for LoRA. LoRA can usually tolerate more epochs than Full FT since it touches far fewer parameters."><i class="fa-solid fa-circle-info"></i></span>
+                                    </label>
                                     <input type="number" id="epochs" name="epochs" min="1" max="10">
                                 </div>
                                 <div class="form-group">
@@ -102,9 +105,34 @@
                                     <input type="number" id="learning_rate_lora" name="learning_rate_lora" step="0.0001" min="0.00001">
                                 </div>
                                 <div class="form-group-divider">Full Fine-Tuning Settings</div>
-                                <div class="form-group">
-                                    <label for="learning_rate_full">Full FT Learning Rate</label>
-                                    <input type="number" id="learning_rate_full" name="learning_rate_full" step="0.000005" min="0.000001">
+                                <div class="grid-2col-small">
+                                    <div class="form-group">
+                                        <label for="epochs_full">
+                                            Full FT Epochs
+                                            <span class="tooltip" title="Number of passes over the training data for Full Fine-Tuning. Keep this low (1-3) — more epochs on all parameters sharply increases the risk of catastrophic forgetting."><i class="fa-solid fa-circle-info"></i></span>
+                                        </label>
+                                        <input type="number" id="epochs_full" name="epochs_full" min="1" max="10">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="learning_rate_full">Full FT Learning Rate</label>
+                                        <input type="number" id="learning_rate_full" name="learning_rate_full" step="0.000005" min="0.000001">
+                                    </div>
+                                </div>
+                                <div class="grid-2col-small">
+                                    <div class="form-group">
+                                        <label for="weight_decay_full">
+                                            Weight Decay
+                                            <span class="tooltip" title="L2 regularization on all weights. Higher values reduce overfitting risk but can slow convergence — especially important for Full FT since every parameter is being updated."><i class="fa-solid fa-circle-info"></i></span>
+                                        </label>
+                                        <input type="number" id="weight_decay_full" name="weight_decay_full" step="0.005" min="0" max="0.5">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="warmup_ratio_full">
+                                            Warmup Ratio
+                                            <span class="tooltip" title="Fraction of total steps spent linearly ramping up the learning rate before decay starts. Helps stabilize Full FT early on, reducing the risk of catastrophic forgetting."><i class="fa-solid fa-circle-info"></i></span>
+                                        </label>
+                                        <input type="number" id="warmup_ratio_full" name="warmup_ratio_full" step="0.01" min="0" max="0.5">
+                                    </div>
                                 </div>
                                 <button type="submit" class="btn btn-primary" id="save-config-btn">
                                     <i class="fa-solid fa-floppy-disk"></i> Save Configuration
@@ -275,6 +303,32 @@
                             </div>
                         </div>
 
+                        <!-- Confusion Matrix & Per-Class Metrics -->
+                        <div class="card glass-card margin-top">
+                            <div class="card-header">
+                                <i class="fa-solid fa-table-cells text-purple"></i>
+                                <h2>Confusion Matrix &amp; Per-Class F1</h2>
+                            </div>
+                            <div class="confusion-model-toggle">
+                                <button class="btn-toggle active" id="cm-toggle-lora" data-method="lora">LoRA</button>
+                                <button class="btn-toggle" id="cm-toggle-full" data-method="full">Full FT</button>
+                            </div>
+                            <div class="confusion-layout">
+                                <div id="confusion-matrix-container"></div>
+                                <div id="per-class-table-container"></div>
+                            </div>
+                        </div>
+
+                        <!-- Misclassified Examples -->
+                        <div class="card glass-card margin-top">
+                            <div class="card-header">
+                                <i class="fa-solid fa-circle-xmark text-red"></i>
+                                <h2>Misclassified Examples</h2>
+                                <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">highest-confidence mistakes, currently shown model</span>
+                            </div>
+                            <div id="misclassified-table" class="misclassified-table"></div>
+                        </div>
+
                         <!-- Green AI / Carbon Footprint Card -->
                         <div class="card glass-card green-section margin-top">
                             <div class="card-header">
@@ -313,6 +367,7 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="green-equivalents" id="green-equivalents"></div>
                         </div>
                     </div>
 
@@ -326,38 +381,6 @@
                         <div id="conclusions-body" class="conclusions-grid"></div>
                     </div>
 
-                    <!-- Catastrophic Forgetting Check -->
-                    <div class="card glass-card margin-top" id="forgetting-card">
-                        <div class="card-header">
-                            <i class="fa-solid fa-brain text-red"></i>
-                            <h2>Catastrophic Forgetting Check</h2>
-                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto">Common pitfall — "Common Pitfalls" slide</span>
-                        </div>
-                        <button class="btn btn-secondary" id="run-forgetting-test-btn">
-                            <i class="fa-solid fa-flask"></i> Run Regression Test
-                        </button>
-                        <div id="forgetting-results" class="hidden margin-top">
-                            <div class="estimate-grid" style="margin-bottom:1rem">
-                                <div class="estimate-stat">
-                                    <div class="estimate-label">Base Model Coherent</div>
-                                    <div class="estimate-value" id="forget-base-score">—</div>
-                                </div>
-                                <div class="estimate-stat">
-                                    <div class="estimate-label">LoRA Coherent</div>
-                                    <div class="estimate-value text-blue" id="forget-lora-score">—</div>
-                                </div>
-                                <div class="estimate-stat">
-                                    <div class="estimate-label">Full FT Coherent</div>
-                                    <div class="estimate-value text-red" id="forget-full-score">—</div>
-                                </div>
-                            </div>
-                            <div id="forgetting-table" class="forgetting-table"></div>
-                            <div id="forgetting-verdict" class="estimate-warning hidden margin-top">
-                                <i class="fa-solid fa-triangle-exclamation"></i>
-                                <span id="forgetting-verdict-text"></span>
-                            </div>
-                        </div>
-                    </div>
                 </section>
 
                 <!-- ─── TAB 3: PLAYGROUND ─── -->

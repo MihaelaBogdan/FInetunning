@@ -62,6 +62,8 @@ def train_full(
     batch_size=BATCH_SIZE,
     learning_rate=FULL_LR,
     train_samples=TRAIN_SAMPLES,
+    weight_decay=WEIGHT_DECAY,
+    warmup_ratio=WARMUP_RATIO,
     progress_callback=None
 ):
     print("=" * 60)
@@ -99,8 +101,8 @@ def train_full(
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=EVAL_BATCH_SIZE,
         learning_rate=learning_rate,
-        weight_decay=WEIGHT_DECAY,
-        warmup_ratio=WARMUP_RATIO,
+        weight_decay=weight_decay,
+        warmup_ratio=warmup_ratio,
         predict_with_generate=True,
         eval_strategy="epoch",
         save_strategy="epoch",

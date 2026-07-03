@@ -92,7 +92,10 @@ async function loadConfig() {
         document.getElementById('learning_rate_full').value = config.learning_rate_full;
         document.getElementById('lora_r').value = config.lora_r;
         document.getElementById('lora_alpha').value = config.lora_alpha;
-        
+        document.getElementById('weight_decay_full').value = config.weight_decay_full;
+        document.getElementById('warmup_ratio_full').value = config.warmup_ratio_full;
+        document.getElementById('epochs_full').value = config.epochs_full;
+
         writeToConsole("[System] Current configuration loaded successfully.");
         updateTrainingEstimate();
         updateLRSchedulerChart();
@@ -110,7 +113,10 @@ async function saveConfig(e) {
         learning_rate_lora: parseFloat(document.getElementById('learning_rate_lora').value),
         learning_rate_full: parseFloat(document.getElementById('learning_rate_full').value),
         lora_r: parseInt(document.getElementById('lora_r').value),
-        lora_alpha: parseInt(document.getElementById('lora_alpha').value)
+        lora_alpha: parseInt(document.getElementById('lora_alpha').value),
+        weight_decay_full: parseFloat(document.getElementById('weight_decay_full').value),
+        warmup_ratio_full: parseFloat(document.getElementById('warmup_ratio_full').value),
+        epochs_full: parseInt(document.getElementById('epochs_full').value)
     };
 
     try {
@@ -365,15 +371,18 @@ function updateLRSchedulerChart() {
     if (!lrSchedulerChart) return;
 
     const samples = parseInt(document.getElementById('train_samples')?.value) || 200;
-    const epochs  = parseInt(document.getElementById('epochs')?.value) || 1;
+    const epochsLora = parseInt(document.getElementById('epochs')?.value) || 1;
+    const epochsFull = parseInt(document.getElementById('epochs_full')?.value) || 1;
     const batch   = parseInt(document.getElementById('batch_size')?.value) || 8;
     const lrLora  = parseFloat(document.getElementById('learning_rate_lora')?.value) || 3e-4;
     const lrFull  = parseFloat(document.getElementById('learning_rate_full')?.value) || 5e-5;
 
-    const totalSteps = Math.max(2, Math.ceil(samples / batch) * epochs);
+    const stepsPerEpoch = Math.ceil(samples / batch);
+    const totalStepsLora = Math.max(2, stepsPerEpoch * epochsLora);
+    const totalStepsFull = Math.max(2, stepsPerEpoch * epochsFull);
 
-    lrSchedulerChart.data.datasets[0].data = computeLRSchedule(lrLora, totalSteps);
-    lrSchedulerChart.data.datasets[1].data = computeLRSchedule(lrFull, totalSteps);
+    lrSchedulerChart.data.datasets[0].data = computeLRSchedule(lrLora, totalStepsLora);
+    lrSchedulerChart.data.datasets[1].data = computeLRSchedule(lrFull, totalStepsFull);
     lrSchedulerChart.update('none');
 }
 
@@ -662,10 +671,153 @@ async function loadAnalytics() {
         
         const co2Saved = (metrics.full.estimated_co2_g - metrics.lora.estimated_co2_g).toFixed(4);
         document.getElementById('green-co2-saved').innerText = `${co2Saved} g CO2`;
-        
+
+        renderGreenEquivalents(metrics.lora, metrics.full);
+
+        // Confusion matrix / per-class / misclassified
+        window._analyticsMetrics = metrics;
+        renderConfusionSection(metrics, currentConfusionMethod);
+
     } catch (err) {
         console.error("Error loading analytics:", err);
     }
+}
+
+// ─── GREEN AI: REAL-WORLD EQUIVALENTS ────────────────────────────────────────
+function renderGreenEquivalents(lora, full) {
+    const container = document.getElementById('green-equivalents');
+    if (!container) return;
+
+    const savedKwh = full.estimated_energy_kwh - lora.estimated_energy_kwh;
+    const savedCo2 = full.estimated_co2_g - lora.estimated_co2_g;
+
+    // Rough real-world reference points (order-of-magnitude, illustrative)
+    const streamingMinutes = savedKwh / 0.0002; // ~0.0002 kWh/min for HD video streaming
+    const phoneCharges = savedKwh / 0.012;       // ~12 Wh per full smartphone charge
+    const ledMinutes = savedKwh / 0.00001667;    // ~10W LED bulb
+
+    const equivalents = [
+        { icon: '📺', value: streamingMinutes, unit: 'min of HD video streaming', label: 'Energy saved by using LoRA instead of Full FT' },
+        { icon: '🔋', value: phoneCharges, unit: 'smartphone charges', label: 'Equivalent energy saved' },
+        { icon: '💡', value: ledMinutes, unit: 'min of a 10W LED bulb', label: 'Equivalent energy saved' },
+    ];
+
+    container.innerHTML = equivalents.map(e => `
+        <div class="green-equiv-card">
+            <div class="green-equiv-icon">${e.icon}</div>
+            <div class="green-equiv-text">
+                <strong>${e.value < 0.01 ? '<0.01' : e.value < 1 ? e.value.toFixed(2) : Math.round(e.value).toLocaleString()} ${e.unit}</strong>
+                <span>${e.label}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ─── CONFUSION MATRIX, PER-CLASS METRICS, MISCLASSIFIED EXAMPLES ────────────
+let currentConfusionMethod = 'lora';
+
+document.addEventListener('DOMContentLoaded', () => {
+    ['lora', 'full'].forEach(method => {
+        const btn = document.getElementById(`cm-toggle-${method}`);
+        if (btn) {
+            btn.addEventListener('click', () => {
+                currentConfusionMethod = method;
+                document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                if (window._analyticsMetrics) {
+                    renderConfusionSection(window._analyticsMetrics, method);
+                }
+            });
+        }
+    });
+});
+
+function renderConfusionSection(metrics, method) {
+    const m = metrics[method];
+    if (!m || !m.confusion_matrix) return;
+
+    renderConfusionMatrix(m.confusion_matrix);
+    renderPerClassTable(m.per_class, m.final_macro_f1);
+    renderMisclassifiedTable(m.misclassified || []);
+}
+
+function renderConfusionMatrix(confusionMatrix) {
+    const container = document.getElementById('confusion-matrix-container');
+    if (!container) return;
+
+    const labels = Object.keys(confusionMatrix);
+    // Find max value for a simple heat intensity scale
+    let maxVal = 0;
+    labels.forEach(t => labels.forEach(p => { maxVal = Math.max(maxVal, confusionMatrix[t][p] || 0); }));
+
+    let html = '<table class="cm-table"><thead><tr><th class="cm-axis-label"></th>';
+    labels.forEach(p => { html += `<th>${p.slice(0, 4)}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    labels.forEach(t => {
+        html += `<tr><th>${t.slice(0, 4)}</th>`;
+        labels.forEach(p => {
+            const val = confusionMatrix[t][p] || 0;
+            const intensity = maxVal > 0 ? val / maxVal : 0;
+            const isDiag = t === p;
+            const bg = isDiag
+                ? `rgba(16, 185, 129, ${0.15 + intensity * 0.5})`
+                : `rgba(255, 69, 91, ${intensity * 0.45})`;
+            html += `<td class="cm-cell" style="background:${bg}">${val}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div class="cm-caption">Rows = true label, columns = predicted label. Diagonal (green) = correct predictions.</div>';
+
+    container.innerHTML = html;
+}
+
+function renderPerClassTable(perClass, macroF1) {
+    const container = document.getElementById('per-class-table-container');
+    if (!container || !perClass) return;
+
+    let html = `<table class="pc-table"><thead><tr>
+        <th>Class</th><th>Precision</th><th>Recall</th><th>F1</th>
+    </tr></thead><tbody>`;
+
+    Object.entries(perClass).forEach(([label, s]) => {
+        html += `<tr>
+            <td>${label}</td>
+            <td class="num">${(s.precision * 100).toFixed(1)}%</td>
+            <td class="num">${(s.recall * 100).toFixed(1)}%</td>
+            <td class="num">${(s.f1 * 100).toFixed(1)}%</td>
+        </tr>`;
+    });
+
+    html += `<tr style="font-weight:700">
+        <td>Macro Avg</td><td class="num">—</td><td class="num">—</td>
+        <td class="num">${(macroF1 * 100).toFixed(1)}%</td>
+    </tr>`;
+    html += '</tbody></table>';
+
+    container.innerHTML = html;
+}
+
+function renderMisclassifiedTable(misclassified) {
+    const container = document.getElementById('misclassified-table');
+    if (!container) return;
+
+    if (!misclassified.length) {
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem">No misclassified examples recorded (or the model got everything right).</p>';
+        return;
+    }
+
+    container.innerHTML = misclassified.map(r => `
+        <div class="mis-row">
+            <div class="mis-text">"${r.text}"</div>
+            <div class="mis-labels">
+                <span class="mis-true">true: ${r.true}</span>
+                <span class="mis-pred">pred: ${r.pred}</span>
+                <span class="mis-conf">conf ${(r.confidence * 100).toFixed(0)}%</span>
+            </div>
+        </div>
+    `).join('');
 }
 
 function renderTimeMemChart(lora, full) {
@@ -1040,24 +1192,28 @@ function formatTime(sec) {
 
 function updateTrainingEstimate() {
     const samples = parseInt(document.getElementById('train_samples')?.value) || 200;
-    const epochs  = parseInt(document.getElementById('epochs')?.value) || 1;
+    const epochsLora = parseInt(document.getElementById('epochs')?.value) || 1;
+    const epochsFull = parseInt(document.getElementById('epochs_full')?.value) || 1;
     const batch   = parseInt(document.getElementById('batch_size')?.value) || 8;
 
     const stepsPerEpoch = Math.ceil(samples / batch);
-    const totalSteps    = stepsPerEpoch * epochs;
+    const totalStepsLora = stepsPerEpoch * epochsLora;
+    const totalStepsFull = stepsPerEpoch * epochsFull;
 
     document.getElementById('est-steps-epoch').textContent = stepsPerEpoch.toLocaleString();
-    document.getElementById('est-steps-total').textContent = totalSteps.toLocaleString();
+    document.getElementById('est-steps-total').textContent =
+        epochsLora === epochsFull ? totalStepsLora.toLocaleString() : `${totalStepsLora.toLocaleString()} / ${totalStepsFull.toLocaleString()}`;
     document.getElementById('est-time-lora').innerHTML =
-        `${formatTime(totalSteps * SEC_PER_STEP.lora)} <span style="font-size:0.7rem;color:var(--text-muted)">(LoRA)</span>`;
+        `${formatTime(totalStepsLora * SEC_PER_STEP.lora)} <span style="font-size:0.7rem;color:var(--text-muted)">(LoRA)</span>`;
     document.getElementById('est-time-full').innerHTML =
-        `${formatTime(totalSteps * SEC_PER_STEP.full)} <span style="font-size:0.7rem;color:var(--text-muted)">(Full FT)</span>`;
+        `${formatTime(totalStepsFull * SEC_PER_STEP.full)} <span style="font-size:0.7rem;color:var(--text-muted)">(Full FT)</span>`;
 
     // Warnings
     const warn = document.getElementById('est-warning');
     const warnText = document.getElementById('est-warning-text');
     const messages = [];
-    if (epochs > 3) messages.push(`${epochs} epochs — risk of overfitting (recommended ≤3).`);
+    if (epochsLora > 3) messages.push(`${epochsLora} LoRA epochs — risk of overfitting (recommended ≤3).`);
+    if (epochsFull > 3) messages.push(`${epochsFull} Full FT epochs — high risk of catastrophic forgetting (recommended ≤3).`);
     if (samples < 100) messages.push(`Only ${samples} examples — too few for generalization.`);
     if (batch > samples / 2) messages.push(`Batch size (${batch}) is very large relative to the dataset (${samples} examples).`);
 
@@ -1071,7 +1227,7 @@ function updateTrainingEstimate() {
 
 // Hook into config inputs
 document.addEventListener('DOMContentLoaded', () => {
-    ['train_samples', 'epochs', 'batch_size', 'learning_rate_lora', 'learning_rate_full'].forEach(id => {
+    ['train_samples', 'epochs', 'epochs_full', 'batch_size', 'learning_rate_lora', 'learning_rate_full'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', () => {
             updateTrainingEstimate();
@@ -1256,96 +1412,3 @@ function renderDuplicateStats(data) {
     }
 }
 
-// ─── CATASTROPHIC FORGETTING TEST ────────────────────────────────────────────
-// Slide 23: "Catastrophic forgetting — aggressive updates erase general abilities"
-document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('run-forgetting-test-btn');
-    if (btn) btn.addEventListener('click', runForgettingTest);
-});
-
-async function runForgettingTest() {
-    const btn = document.getElementById('run-forgetting-test-btn');
-    const resultsBox = document.getElementById('forgetting-results');
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running on all 3 models…';
-
-    try {
-        const res = await fetch(`${API_BASE}/api/forgetting-test`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        renderForgettingTest(data);
-        resultsBox.classList.remove('hidden');
-    } catch (e) {
-        alert('Test failed: ' + e.message);
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-flask"></i> Run Regression Test';
-    }
-}
-
-function renderForgettingTest(data) {
-    const modelLabels = { base: 'Base', lora: 'LoRA', full: 'Full FT' };
-    const scoreEls = { base: 'forget-base-score', lora: 'forget-lora-score', full: 'forget-full-score' };
-
-    ['base', 'lora', 'full'].forEach(key => {
-        const el = document.getElementById(scoreEls[key]);
-        if (data.scores[key] !== undefined) {
-            el.textContent = `${data.scores[key]}%`;
-            el.style.color = data.scores[key] >= 80 ? '#10b981' : data.scores[key] >= 40 ? '#f59e0b' : '#ff455b';
-        } else {
-            el.textContent = 'N/A';
-            el.style.color = 'var(--text-muted)';
-        }
-    });
-
-    // Table of prompts x answers
-    const table = document.getElementById('forgetting-table');
-    table.innerHTML = '';
-    const normalize = t => (t || '').trim().toLowerCase().replace(/[.!?]+$/, '');
-
-    data.prompts.forEach(row => {
-        const rowEl = document.createElement('div');
-        rowEl.className = 'forgetting-row';
-
-        const texts = Object.values(row.answers).map(a => normalize(a.text));
-        const allSame = texts.every(t => t === texts[0]);
-
-        const answersHtml = Object.entries(row.answers).map(([key, a]) => `
-            <div class="forgetting-answer ${a.coherent ? 'coherent' : 'incoherent'}">
-                <span class="fa-name">${modelLabels[key] || key}</span>
-                ${a.text || '(empty)'}
-            </div>
-        `).join('');
-
-        const diffBadge = allSame
-            ? `<span class="forgetting-diff-badge same">MATCH</span>`
-            : `<span class="forgetting-diff-badge diff">DIFFER — models produced different answers</span>`;
-
-        rowEl.innerHTML = `
-            <div class="forgetting-prompt-row">
-                <div class="forgetting-prompt">"${row.prompt}"</div>
-                ${diffBadge}
-            </div>
-            <div class="forgetting-answers">${answersHtml}</div>
-        `;
-        table.appendChild(rowEl);
-    });
-
-    // Verdict
-    const verdict = document.getElementById('forgetting-verdict');
-    const verdictText = document.getElementById('forgetting-verdict-text');
-    const issues = [];
-    if (data.scores.lora !== undefined && data.scores.base !== undefined && data.scores.lora < data.scores.base - 20) {
-        issues.push(`LoRA lost ${(data.scores.base - data.scores.lora).toFixed(0)}% of its general coherence compared to Base.`);
-    }
-    if (data.scores.full !== undefined && data.scores.base !== undefined && data.scores.full < data.scores.base - 20) {
-        issues.push(`Full FT lost ${(data.scores.base - data.scores.full).toFixed(0)}% of its general coherence compared to Base — a typical sign of catastrophic forgetting.`);
-    }
-    if (issues.length > 0) {
-        verdictText.textContent = issues.join(' ') + ' The model responds with emotion labels even for questions unrelated to the task.';
-        verdict.classList.remove('hidden');
-    } else {
-        verdict.classList.add('hidden');
-    }
-}

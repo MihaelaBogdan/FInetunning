@@ -15,7 +15,7 @@ from typing import Optional
 from config import (
     BASE_MODEL, OUTPUT_DIR, LORA_R, LORA_ALPHA,
     TRAIN_SAMPLES, BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE, FULL_LR,
-    TEXT_COLUMN, LABEL_NAMES, TASK,
+    TEXT_COLUMN, LABEL_NAMES, TASK, WEIGHT_DECAY, WARMUP_RATIO,
 )
 from data_utils import load_tokenizer
 from train_lora import train_lora, get_device
@@ -47,6 +47,9 @@ class AppState:
             "learning_rate_full": FULL_LR,
             "lora_r": LORA_R,
             "lora_alpha": LORA_ALPHA,
+            "weight_decay_full": WEIGHT_DECAY,
+            "warmup_ratio_full": WARMUP_RATIO,
+            "epochs_full": NUM_EPOCHS,
         }
         # Cached models
         self.tokenizer = None
@@ -104,10 +107,12 @@ def run_training_thread(method: str, params: dict):
             state.lora_model = None
         elif method == "full":
             train_full(
-                epochs=params["epochs"],
+                epochs=params.get("epochs_full", params["epochs"]),
                 batch_size=params["batch_size"],
                 learning_rate=params["learning_rate_full"],
                 train_samples=params["train_samples"],
+                weight_decay=params.get("weight_decay_full", WEIGHT_DECAY),
+                warmup_ratio=params.get("warmup_ratio_full", WARMUP_RATIO),
                 progress_callback=progress_callback
             )
             # Reset cached Full model
@@ -136,6 +141,9 @@ class ConfigModel(BaseModel):
     learning_rate_full: float
     lora_r: int
     lora_alpha: int
+    weight_decay_full: float
+    warmup_ratio_full: float
+    epochs_full: int
 
 @app.get("/api/config")
 def get_config():
@@ -375,82 +383,6 @@ def get_truncation_stats():
         "histogram": {"labels": bucket_labels, "values": hist, "limit": limit},
     }
     return _trunc_cache
-
-
-FORGETTING_PROMPTS = [
-    "Translate to French: Hello, how are you?",
-    "What is 12 plus 7?",
-    "Summarize: The cat sat on the warm windowsill all afternoon.",
-    "Is Paris the capital of France? Answer yes or no.",
-    "Rewrite in past tense: I walk to the store every day.",
-    # "Trap" prompts: wording overlaps with the fine-tuning domain (emotion),
-    # so an overfit model is tempted to output a label instead of following
-    # the actual instruction — this is where divergence is most likely.
-    "How do you feel about the weather today? Answer in one sentence.",
-    "Continue the story: She opened the door and",
-    "Name a color that is not red.",
-]
-
-
-def _generate_free_text(model, tokenizer, prompt, device, max_new_tokens=20):
-    model.eval()
-    model.to(device)
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
-    with torch.no_grad():
-        out = model.generate(**inputs, max_new_tokens=max_new_tokens)
-    return tokenizer.decode(out[0], skip_special_tokens=True).strip()
-
-
-@app.get("/api/forgetting-test")
-def run_forgetting_test():
-    """Probe base/LoRA/Full FT models with prompts unrelated to the fine-tuning task.
-
-    If a fine-tuned model answers every unrelated prompt with an emotion label,
-    it has likely lost its general instruction-following ability (catastrophic forgetting).
-    """
-    device = get_device()
-
-    if state.tokenizer is None:
-        state.tokenizer = load_tokenizer()
-    if state.base_model is None:
-        state.base_model = AutoModelForSeq2SeqLM.from_pretrained(BASE_MODEL)
-
-    lora_path = os.path.join(OUTPUT_DIR, "lora", "lora_adapter")
-    full_path = os.path.join(OUTPUT_DIR, "full", "full_model")
-
-    if os.path.exists(lora_path) and state.lora_model is None:
-        clean_base = AutoModelForSeq2SeqLM.from_pretrained(BASE_MODEL)
-        state.lora_model = PeftModel.from_pretrained(clean_base, lora_path)
-    if os.path.exists(full_path) and state.full_model is None:
-        state.full_model = AutoModelForSeq2SeqLM.from_pretrained(full_path)
-
-    models = {"base": state.base_model}
-    if state.lora_model is not None:
-        models["lora"] = state.lora_model
-    if state.full_model is not None:
-        models["full"] = state.full_model
-
-    label_set = set(LABEL_NAMES)
-    rows = []
-    coherent_counts = {k: 0 for k in models}
-
-    for prompt in FORGETTING_PROMPTS:
-        row = {"prompt": prompt, "answers": {}}
-        for key, model in models.items():
-            try:
-                answer = _generate_free_text(model, state.tokenizer, prompt, device)
-            except Exception as e:
-                answer = f"[error: {e}]"
-            is_regressed = answer.strip().lower() in label_set
-            if not is_regressed:
-                coherent_counts[key] += 1
-            row["answers"][key] = {"text": answer, "coherent": not is_regressed}
-        rows.append(row)
-
-    n = len(FORGETTING_PROMPTS)
-    scores = {k: round(100 * v / n, 1) for k, v in coherent_counts.items()}
-
-    return {"prompts": rows, "scores": scores, "available_models": list(models.keys())}
 
 
 @app.get("/api/dataset-stats")

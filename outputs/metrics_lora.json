@@ -3,11 +3,11 @@
   "total_params": 77305216,
   "trainable_params": 344064,
   "trainable_pct": 0.4451,
-  "train_time_sec": 7.1,
-  "peak_ram_mb": 730.97,
+  "train_time_sec": 7.03,
+  "peak_ram_mb": 757.69,
   "peak_gpu_mb": 0.0,
   "train_loss_history": [
-    2.3272
+    2.3139
   ],
   "eval_loss_history": [],
   "final_accuracy": 0.06,
